@@ -1,0 +1,1402 @@
+{
+  "info": {
+    "name": "Cloud Agent Monitor API",
+    "description": "Cloud Agent Monitor API接口测试集合\n\n## 环境变量\n- `base_url`: API基础地址 (默认: http://localhost:8080/api/v1)\n- `api_key`: 认证Token (登录后自动设置)\n- `service_id`: 服务ID (创建服务后自动设置)\n- `user_id`: 用户ID (登录后自动设置)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "Authorization",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "Bearer {{api_key}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "exec": [
+          "pm.test('Status code is 2xx', function () {",
+          "    pm.response.to.be.success;",
+          "});",
+          "",
+          "var jsonData = pm.response.json();",
+          "if (jsonData.data && jsonData.data.access_token) {",
+          "    pm.collectionVariables.set('api_key', jsonData.data.access_token);",
+          "}",
+          "if (jsonData.data && jsonData.data.id) {",
+          "    pm.collectionVariables.set('service_id', jsonData.data.id);",
+          "}",
+          "if (jsonData.data && jsonData.data.user && jsonData.data.user.id) {",
+          "    pm.collectionVariables.set('user_id', jsonData.data.user.id);",
+          "}"
+        ],
+        "type": "text/javascript"
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "service_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "api_key_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "fingerprint",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "silence_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth - 认证接口",
+      "description": "无需Token认证的接口",
+      "auth": {
+        "type": "noauth"
+      },
+      "item": [
+        {
+          "name": "Register - 用户注册",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"testuser\",\n  \"email\": \"test@example.com\",\n  \"password\": \"password123\",\n  \"display_name\": \"Test User\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "注册新用户账户"
+          },
+          "response": []
+        },
+        {
+          "name": "Login - 用户登录",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Response has access_token', function () {",
+                  "    pm.expect(jsonData.data).to.have.property('access_token');",
+                  "});",
+                  "",
+                  "if (jsonData.data && jsonData.data.access_token) {",
+                  "    pm.collectionVariables.set('api_key', jsonData.data.access_token);",
+                  "}",
+                  "if (jsonData.data && jsonData.data.user && jsonData.data.user.id) {",
+                  "    pm.collectionVariables.set('user_id', jsonData.data.user.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"testuser\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "用户登录获取Token"
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Token - 刷新Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"your_refresh_token_here\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "refresh"]
+            },
+            "description": "使用refresh_token刷新access_token"
+          },
+          "response": []
+        },
+        {
+          "name": "Forgot Password - 忘记密码",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/forgot-password",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "forgot-password"]
+            },
+            "description": "请求重置密码邮件"
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Password - 重置密码",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"reset_token_from_email\",\n  \"password\": \"newpassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/reset-password",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "reset-password"]
+            },
+            "description": "使用邮件中的token重置密码"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Users - 用户接口",
+      "description": "需要Token认证的用户相关接口",
+      "item": [
+        {
+          "name": "Get Current User - 获取当前用户信息",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/users/me",
+              "host": ["{{base_url}}"],
+              "path": ["users", "me"]
+            },
+            "description": "获取当前登录用户的详细信息"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Profile - 更新个人信息",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"display_name\": \"New Display Name\",\n  \"email\": \"newemail@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/users/me",
+              "host": ["{{base_url}}"],
+              "path": ["users", "me"]
+            },
+            "description": "更新当前用户的个人信息"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Login Logs - 获取登录日志",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/users/me/login-logs",
+              "host": ["{{base_url}}"],
+              "path": ["users", "me", "login-logs"]
+            },
+            "description": "获取当前用户的登录历史记录"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "API Keys - API密钥管理",
+      "description": "需要Token认证的API密钥管理接口",
+      "item": [
+        {
+          "name": "List API Keys - 获取API密钥列表",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api-keys",
+              "host": ["{{base_url}}"],
+              "path": ["api-keys"]
+            },
+            "description": "获取当前用户的所有API密钥"
+          },
+          "response": []
+        },
+        {
+          "name": "Create API Key - 创建API密钥",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.id) {",
+                  "    pm.collectionVariables.set('api_key_id', jsonData.data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"My API Key\",\n  \"permissions\": {\n    \"service_read\": true,\n    \"service_write\": true,\n    \"service_delete\": false\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api-keys",
+              "host": ["{{base_url}}"],
+              "path": ["api-keys"]
+            },
+            "description": "创建新的API密钥"
+          },
+          "response": []
+        },
+        {
+          "name": "Revoke API Key - 删除API密钥",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api-keys/{{api_key_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api-keys", "{{api_key_id}}"]
+            },
+            "description": "撤销/删除指定的API密钥"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Services - 服务管理",
+      "description": "服务CRUD操作接口",
+      "item": [
+        {
+          "name": "List Services - 服务列表",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/services?page=1&page_size=20&environment=dev",
+              "host": ["{{base_url}}"],
+              "path": ["services"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "页码"
+                },
+                {
+                  "key": "page_size",
+                  "value": "20",
+                  "description": "每页数量"
+                },
+                {
+                  "key": "environment",
+                  "value": "dev",
+                  "description": "环境过滤 (local/dev/staging/prod)"
+                },
+                {
+                  "key": "name",
+                  "value": "",
+                  "description": "名称过滤",
+                  "disabled": true
+                },
+                {
+                  "key": "label_key",
+                  "value": "",
+                  "description": "标签键过滤",
+                  "disabled": true
+                },
+                {
+                  "key": "label_value",
+                  "value": "",
+                  "description": "标签值过滤",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "获取服务列表，支持分页和过滤"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Service - 创建服务",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.id) {",
+                  "    pm.collectionVariables.set('service_id', jsonData.data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"my-service\",\n  \"description\": \"My service description\",\n  \"environment\": \"dev\",\n  \"labels\": {\n    \"team\": \"backend\",\n    \"version\": \"v1.0.0\"\n  },\n  \"endpoint\": \"http://localhost:8080\",\n  \"maintainer\": \"admin@example.com\",\n  \"team\": \"backend-team\",\n  \"documentation_url\": \"https://docs.example.com\",\n  \"repository_url\": \"https://github.com/example/repo\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/services",
+              "host": ["{{base_url}}"],
+              "path": ["services"]
+            },
+            "description": "创建新服务"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Service - 获取单个服务",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/services/{{service_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["services", "{{service_id}}"]
+            },
+            "description": "根据ID获取服务详情"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Service - 更新服务",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"my-service-updated\",\n  \"description\": \"Updated description\",\n  \"environment\": \"prod\",\n  \"labels\": {\n    \"team\": \"backend\",\n    \"version\": \"v2.0.0\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/services/{{service_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["services", "{{service_id}}"]
+            },
+            "description": "更新服务信息"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Service - 删除服务",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/services/{{service_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["services", "{{service_id}}"]
+            },
+            "description": "删除指定服务"
+          },
+          "response": []
+        },
+        {
+          "name": "Search Services - 搜索服务",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/services/search?q=my-service",
+              "host": ["{{base_url}}"],
+              "path": ["services", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "my-service",
+                  "description": "搜索关键词"
+                }
+              ]
+            },
+            "description": "搜索服务"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Services - Batch Operations",
+      "description": "服务批量操作接口",
+      "item": [
+        {
+          "name": "Batch Create - 批量创建",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"services\": [\n    {\n      \"name\": \"service-1\",\n      \"description\": \"Service 1\",\n      \"environment\": \"dev\"\n    },\n    {\n      \"name\": \"service-2\",\n      \"description\": \"Service 2\",\n      \"environment\": \"prod\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/services/batch",
+              "host": ["{{base_url}}"],
+              "path": ["services", "batch"]
+            },
+            "description": "批量创建服务"
+          },
+          "response": []
+        },
+        {
+          "name": "Batch Update - 批量更新",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"services\": [\n    {\n      \"id\": \"{{service_id}}\",\n      \"description\": \"Updated description\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/services/batch",
+              "host": ["{{base_url}}"],
+              "path": ["services", "batch"]
+            },
+            "description": "批量更新服务"
+          },
+          "response": []
+        },
+        {
+          "name": "Batch Delete - 批量删除",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\n    \"{{service_id}}\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/services/batch",
+              "host": ["{{base_url}}"],
+              "path": ["services", "batch"]
+            },
+            "description": "批量删除服务"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Services - Health",
+      "description": "服务健康检查相关接口",
+      "item": [
+        {
+          "name": "Get Health - 获取所有服务健康状态",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/services/health",
+              "host": ["{{base_url}}"],
+              "path": ["services", "health"]
+            },
+            "description": "获取所有服务的健康状态"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Health Summary - 健康状态摘要",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/services/health/summary",
+              "host": ["{{base_url}}"],
+              "path": ["services", "health", "summary"]
+            },
+            "description": "获取服务健康状态统计摘要"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Service Health - 获取单个服务健康状态",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/services/{{service_id}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["services", "{{service_id}}", "health"]
+            },
+            "description": "获取指定服务的健康状态"
+          },
+          "response": []
+        },
+        {
+          "name": "Check Health Now - 立即健康检查",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/services/{{service_id}}/health/check",
+              "host": ["{{base_url}}"],
+              "path": ["services", "{{service_id}}", "health", "check"]
+            },
+            "description": "立即触发服务健康检查"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Services - Labels",
+      "description": "服务标签管理接口",
+      "item": [
+        {
+          "name": "Get Label Keys - 获取所有标签键",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/services/labels",
+              "host": ["{{base_url}}"],
+              "path": ["services", "labels"]
+            },
+            "description": "获取所有标签键列表"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Label Values - 获取标签值",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/services/labels/team",
+              "host": ["{{base_url}}"],
+              "path": ["services", "labels", "team"]
+            },
+            "description": "获取指定标签键的所有值"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Labels - 更新服务标签",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"labels\": {\n    \"team\": \"frontend\",\n    \"env\": \"production\",\n    \"version\": \"v1.2.0\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/services/{{service_id}}/labels",
+              "host": ["{{base_url}}"],
+              "path": ["services", "{{service_id}}", "labels"]
+            },
+            "description": "更新服务的标签"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Services - Dependencies",
+      "description": "服务依赖关系管理接口",
+      "item": [
+        {
+          "name": "Get Dependency Graph - 获取依赖图",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/services/dependencies",
+              "host": ["{{base_url}}"],
+              "path": ["services", "dependencies"]
+            },
+            "description": "获取所有服务的依赖关系图"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Dependencies - 获取服务依赖",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/services/{{service_id}}/dependencies",
+              "host": ["{{base_url}}"],
+              "path": ["services", "{{service_id}}", "dependencies"]
+            },
+            "description": "获取指定服务依赖的其他服务"
+          },
+          "response": []
+        },
+        {
+          "name": "Add Dependency - 添加依赖",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dependency_id\": \"{{service_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/services/{{service_id}}/dependencies",
+              "host": ["{{base_url}}"],
+              "path": ["services", "{{service_id}}", "dependencies"]
+            },
+            "description": "为服务添加依赖关系"
+          },
+          "response": []
+        },
+        {
+          "name": "Remove Dependency - 删除依赖",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/services/{{service_id}}/dependencies/{{dep_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["services", "{{service_id}}", "dependencies", "{{dep_id}}"]
+            },
+            "description": "删除服务的依赖关系"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Dependents - 获取被依赖",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/services/{{service_id}}/dependents",
+              "host": ["{{base_url}}"],
+              "path": ["services", "{{service_id}}", "dependents"]
+            },
+            "description": "获取依赖此服务的其他服务"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Services - OpenAPI",
+      "description": "服务OpenAPI规范管理接口",
+      "item": [
+        {
+          "name": "Get OpenAPI - 获取OpenAPI规范",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/services/{{service_id}}/openapi",
+              "host": ["{{base_url}}"],
+              "path": ["services", "{{service_id}}", "openapi"]
+            },
+            "description": "获取服务的OpenAPI规范"
+          },
+          "response": []
+        },
+        {
+          "name": "Update OpenAPI - 更新OpenAPI规范",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"openapi_spec\": \"openapi: 3.0.0\\ninfo:\\n  title: My API\\n  version: 1.0.0\\npaths:\\n  /users:\\n    get:\\n      summary: List users\\n      responses:\\n        '200':\\n          description: Success\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/services/{{service_id}}/openapi",
+              "host": ["{{base_url}}"],
+              "path": ["services", "{{service_id}}", "openapi"]
+            },
+            "description": "更新服务的OpenAPI规范"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin - 用户管理",
+      "description": "管理员用户管理接口",
+      "item": [
+        {
+          "name": "List Users - 用户列表",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/users?page=1&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["users"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "获取用户列表（管理员权限）"
+          },
+          "response": []
+        },
+        {
+          "name": "Get User By ID - 获取用户详情",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/users/{{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["users", "{{user_id}}"]
+            },
+            "description": "根据ID获取用户详情（管理员权限）"
+          },
+          "response": []
+        },
+        {
+          "name": "Set User Status - 设置用户状态",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/users/{{user_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["users", "{{user_id}}", "status"]
+            },
+            "description": "启用/禁用用户账户（管理员权限）"
+          },
+          "response": []
+        },
+        {
+          "name": "Get User Roles - 获取用户角色",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/users/{{user_id}}/roles",
+              "host": ["{{base_url}}"],
+              "path": ["users", "{{user_id}}", "roles"]
+            },
+            "description": "获取用户的角色列表（管理员权限）"
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Role - 分配角色",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role_id\": \"role-uuid-here\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/users/{{user_id}}/roles",
+              "host": ["{{base_url}}"],
+              "path": ["users", "{{user_id}}", "roles"]
+            },
+            "description": "为用户分配角色（管理员权限）"
+          },
+          "response": []
+        },
+        {
+          "name": "Remove Role - 移除角色",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/users/{{user_id}}/roles/{{role_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["users", "{{user_id}}", "roles", "{{role_id}}"]
+            },
+            "description": "移除用户的角色（管理员权限）"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin - 角色管理",
+      "description": "管理员角色管理接口",
+      "item": [
+        {
+          "name": "List Roles - 角色列表",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/roles?page=1&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["roles"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "获取角色列表（管理员权限）"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Alerting - 告警路由",
+      "description": "告警管理、静默规则、操作历史相关接口",
+      "item": [
+        {
+          "name": "Alerts - 告警管理",
+          "item": [
+            {
+              "name": "Send Alert - 发送告警",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"labels\": {\n    \"alertname\": \"HighErrorRate\",\n    \"severity\": \"critical\",\n    \"service\": \"checkout-sim\",\n    \"tenant_id\": \"default\"\n  },\n  \"annotations\": {\n    \"summary\": \"High error rate detected\",\n    \"description\": \"Error rate exceeded 5% threshold\"\n  }\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/alerts",
+                  "host": ["{{base_url}}"],
+                  "path": ["alerts"]
+                },
+                "description": "发送单个告警到 Alertmanager"
+              },
+              "response": []
+            },
+            {
+              "name": "Send Alerts Batch - 批量发送告警",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"alerts\": [\n    {\n      \"labels\": {\n        \"alertname\": \"HighLatency\",\n        \"severity\": \"warning\",\n        \"service\": \"checkout-sim\"\n      },\n      \"annotations\": {\n        \"summary\": \"High latency detected\"\n      }\n    },\n    {\n      \"labels\": {\n        \"alertname\": \"HighMemoryUsage\",\n        \"severity\": \"warning\",\n        \"service\": \"checkout-sim\"\n      },\n      \"annotations\": {\n        \"summary\": \"Memory usage high\"\n      }\n    }\n  ]\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/alerts/batch",
+                  "host": ["{{base_url}}"],
+                  "path": ["alerts", "batch"]
+                },
+                "description": "批量发送多个告警"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Alerts - 获取告警列表",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/alerts?active=true&silenced=false",
+                  "host": ["{{base_url}}"],
+                  "path": ["alerts"],
+                  "query": [
+                    {
+                      "key": "active",
+                      "value": "true",
+                      "description": "仅返回活跃告警"
+                    },
+                    {
+                      "key": "silenced",
+                      "value": "false",
+                      "description": "是否包含静默告警"
+                    },
+                    {
+                      "key": "inhibited",
+                      "value": "false",
+                      "description": "是否包含抑制告警",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "从 Alertmanager 获取告警列表"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Alert - 获取单个告警",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/alerts/{{fingerprint}}",
+                  "host": ["{{base_url}}"],
+                  "path": ["alerts", "{{fingerprint}}"]
+                },
+                "description": "根据 fingerprint 获取告警详情"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Alert Records - 获取告警记录",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/alerts/records?page=1&page_size=20&status=firing",
+                  "host": ["{{base_url}}"],
+                  "path": ["alerts", "records"],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "page_size",
+                      "value": "20"
+                    },
+                    {
+                      "key": "status",
+                      "value": "firing",
+                      "description": "firing/resolved"
+                    },
+                    {
+                      "key": "severity",
+                      "value": "",
+                      "description": "critical/warning/info",
+                      "disabled": true
+                    },
+                    {
+                      "key": "from",
+                      "value": "",
+                      "description": "开始时间 RFC3339",
+                      "disabled": true
+                    },
+                    {
+                      "key": "to",
+                      "value": "",
+                      "description": "结束时间 RFC3339",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "获取历史告警记录（分页）"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Alert Records Stats - 告警统计",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/alerts/records/stats?from=2024-01-01T00:00:00Z&to=2024-12-31T23:59:59Z",
+                  "host": ["{{base_url}}"],
+                  "path": ["alerts", "records", "stats"],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "2024-01-01T00:00:00Z"
+                    },
+                    {
+                      "key": "to",
+                      "value": "2024-12-31T23:59:59Z"
+                    }
+                  ]
+                },
+                "description": "获取告警统计数据"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Noisy Alerts - 获取噪声告警",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/alerts/noisy?limit=10",
+                  "host": ["{{base_url}}"],
+                  "path": ["alerts", "noisy"],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    }
+                  ]
+                },
+                "description": "获取高频重复告警（噪声分析）"
+              },
+              "response": []
+            },
+            {
+              "name": "Get High Risk Alerts - 获取高风险告警",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/alerts/high-risk?limit=10",
+                  "host": ["{{base_url}}"],
+                  "path": ["alerts", "high-risk"],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    }
+                  ]
+                },
+                "description": "获取高风险告警列表"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Alert Feedback - 获取告警反馈",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/alerts/{{fingerprint}}/feedback",
+                  "host": ["{{base_url}}"],
+                  "path": ["alerts", "{{fingerprint}}", "feedback"]
+                },
+                "description": "获取告警的反馈信息"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Silences - 静默规则",
+          "item": [
+            {
+              "name": "Create Silence - 创建静默",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"matchers\": [\n    {\n      \"name\": \"alertname\",\n      \"value\": \"HighErrorRate\",\n      \"is_regex\": false\n    },\n    {\n      \"name\": \"service\",\n      \"value\": \"checkout-sim\",\n      \"is_regex\": false\n    }\n  ],\n  \"starts_at\": \"2024-01-01T10:00:00Z\",\n  \"ends_at\": \"2024-01-01T12:00:00Z\",\n  \"created_by\": \"admin@example.com\",\n  \"comment\": \"Maintenance window\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/silences",
+                  "host": ["{{base_url}}"],
+                  "path": ["silences"]
+                },
+                "description": "创建静默规则"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Silences - 获取静默列表",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/silences",
+                  "host": ["{{base_url}}"],
+                  "path": ["silences"]
+                },
+                "description": "获取所有静默规则"
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Silence - 删除静默",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/silences/{{silence_id}}",
+                  "host": ["{{base_url}}"],
+                  "path": ["silences", "{{silence_id}}"]
+                },
+                "description": "删除静默规则"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Operations - 操作历史",
+          "item": [
+            {
+              "name": "Get Operation History - 操作历史",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/operations/history?limit=50&offset=0",
+                  "host": ["{{base_url}}"],
+                  "path": ["operations", "history"],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "50"
+                    },
+                    {
+                      "key": "offset",
+                      "value": "0"
+                    }
+                  ]
+                },
+                "description": "获取告警操作历史记录"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Status - 状态检查",
+          "item": [
+            {
+              "name": "Health Check - 健康检查",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/health",
+                  "host": ["{{base_url}}"],
+                  "path": ["health"]
+                },
+                "description": "告警服务健康检查"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Status - 获取状态",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/status",
+                  "host": ["{{base_url}}"],
+                  "path": ["status"]
+                },
+                "description": "获取 Alertmanager 状态信息"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Webhook - 接收器",
+          "item": [
+            {
+              "name": "Receive Webhook - 接收告警推送",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"receiver\": \"default-receiver\",\n  \"status\": \"firing\",\n  \"alerts\": [\n    {\n      \"status\": \"firing\",\n      \"labels\": {\n        \"alertname\": \"HighErrorRate\",\n        \"severity\": \"critical\",\n        \"service\": \"checkout-sim\",\n        \"tenant_id\": \"default\"\n      },\n      \"annotations\": {\n        \"summary\": \"High error rate detected\",\n        \"description\": \"Error rate exceeded 5% threshold\"\n      },\n      \"startsAt\": \"2024-01-15T10:00:00Z\",\n      \"fingerprint\": \"abc123def456\"\n    }\n  ],\n  \"groupLabels\": {\n    \"alertname\": \"HighErrorRate\"\n  },\n  \"commonLabels\": {\n    \"severity\": \"critical\"\n  },\n  \"commonAnnotations\": {\n    \"summary\": \"High error rate detected\"\n  },\n  \"externalURL\": \"http://alertmanager:9093\",\n  \"version\": \"4\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/alerts/webhook",
+                  "host": ["{{base_url}}"],
+                  "path": ["alerts", "webhook"]
+                },
+                "description": "Alertmanager webhook 推送告警（无需认证）"
+              },
+              "response": []
+            },
+            {
+              "name": "Receive Webhook - Resolved",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"receiver\": \"default-receiver\",\n  \"status\": \"resolved\",\n  \"alerts\": [\n    {\n      \"status\": \"resolved\",\n      \"labels\": {\n        \"alertname\": \"HighErrorRate\",\n        \"severity\": \"critical\",\n        \"service\": \"checkout-sim\",\n        \"tenant_id\": \"default\"\n      },\n      \"annotations\": {\n        \"summary\": \"High error rate resolved\",\n        \"description\": \"Error rate back to normal\"\n      },\n      \"startsAt\": \"2024-01-15T10:00:00Z\",\n      \"endsAt\": \"2024-01-15T10:30:00Z\",\n      \"fingerprint\": \"abc123def456\"\n    }\n  ],\n  \"groupLabels\": {\n    \"alertname\": \"HighErrorRate\"\n  },\n  \"externalURL\": \"http://alertmanager:9093\",\n  \"version\": \"4\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/alerts/webhook",
+                  "host": ["{{base_url}}"],
+                  "path": ["alerts", "webhook"]
+                },
+                "description": "Alertmanager webhook 告警恢复（无需认证）"
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

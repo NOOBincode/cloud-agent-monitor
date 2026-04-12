@@ -1,0 +1,94 @@
+groups:
+  - name: cardinality
+    rules:
+      - alert: HighTotalSeries
+        expr: count({__name__=~".+"}) > 10000
+        for: 5m
+        labels:
+          severity: warning
+          category: cardinality
+        annotations:
+          summary: "Prometheus series 总数过高"
+          description: "当前 series 总数: {{ $value }}，超过阈值 10000"
+
+      - alert: HighTotalSeriesCritical
+        expr: count({__name__=~".+"}) > 50000
+        for: 2m
+        labels:
+          severity: critical
+          category: cardinality
+        annotations:
+          summary: "Prometheus series 总数严重过高"
+          description: "当前 series 总数: {{ $value }}，超过阈值 50000，可能导致 OOM"
+
+      - alert: HighMetricCardinality
+        expr: count by (__name__) ({__name__=~".+"}) > 1000
+        for: 5m
+        labels:
+          severity: warning
+          category: cardinality
+        annotations:
+          summary: "单指标 series 数量过高"
+          description: "指标 {{ $labels.__name__ }} 的 series 数量: {{ $value }}，超过阈值 1000"
+
+      - alert: HighLabelCardinality
+        expr: label_values({__name__=~".+"}, tenant_id) > 100
+        for: 5m
+        labels:
+          severity: warning
+          category: cardinality
+        annotations:
+          summary: "租户数量过多"
+          description: "当前租户数量: {{ $value }}，超过阈值 100"
+
+      - alert: PrometheusMemoryUsage
+        expr: process_resident_memory_bytes{job="prometheus"} / 1024 / 1024 / 1024 > 4
+        for: 5m
+        labels:
+          severity: warning
+          category: resource
+        annotations:
+          summary: "Prometheus 内存使用过高"
+          description: "当前内存使用: {{ $value | printf \"%.2f\" }}GB，超过阈值 4GB"
+
+      - alert: PrometheusScrapeDuration
+        expr: histogram_quantile(0.9, rate(scrape_duration_seconds_sum[5m]) / rate(scrape_duration_seconds_count[5m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "Prometheus 采集延迟过高"
+          description: "P90 采集延迟: {{ $value | printf \"%.2f\" }}s，超过阈值 10s"
+
+      - alert: PrometheusScrapeErrors
+        expr: rate(scrape_samples_scraped{job!=""}[5m]) == 0 and ON(job) count by (job) (up{job!=""}) == 1
+        for: 5m
+        labels:
+          severity: critical
+          category: scrape
+        annotations:
+          summary: "Prometheus 采集失败"
+          description: "Job {{ $labels.job }} 采集失败，请检查目标状态"
+
+  - name: tenant_quotas
+    rules:
+      - alert: TenantSeriesQuotaExceeded
+        expr: count by (tenant_id) ({__name__=~".+"}) > 5000
+        for: 5m
+        labels:
+          severity: warning
+          category: quota
+        annotations:
+          summary: "租户 series 配额超限"
+          description: "租户 {{ $labels.tenant_id }} 的 series 数量: {{ $value }}，超过配额 5000"
+
+      - alert: TenantHighCardinalityMetric
+        expr: count by (tenant_id, __name__) ({__name__=~".+"}) > 500
+        for: 5m
+        labels:
+          severity: warning
+          category: quota
+        annotations:
+          summary: "租户单指标基数过高"
+          description: "租户 {{ $labels.tenant_id }} 的指标 {{ $labels.__name__ }} series 数量: {{ $value }}"

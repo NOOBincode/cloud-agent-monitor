@@ -1,0 +1,65 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  
+  external_labels:
+    cluster: 'local'
+    environment: 'dev'
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+remote_write:
+  - url: "http://victoriametrics:8428/api/v1/write"
+    queue_config:
+      max_samples_per_send: 1000
+      max_shards: 200
+      capacity: 2500
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          tenant_id: 'system'
+          service: 'prometheus'
+
+  - job_name: checkout-sim
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["checkout-sim:18080"]
+        labels:
+          env: local
+          service: checkout-sim
+          tenant_id: 'default'
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'go_(goroutines|gc_duration_seconds|memstats_alloc_bytes|threads)'
+        action: keep
+      - source_labels: [__name__]
+        regex: 'prometheus_.*'
+        action: drop
+
+  - job_name: victoriametrics
+    static_configs:
+      - targets: ["victoriametrics:8428"]
+        labels:
+          tenant_id: 'system'
+          service: 'victoriametrics'
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'vm_.*'
+        action: keep
+
+  - job_name: alertmanager
+    static_configs:
+      - targets: ["alertmanager:9093"]
+        labels:
+          tenant_id: 'system'
+          service: 'alertmanager'

@@ -1,0 +1,66 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum(rate(checkout_requests_total{path=\"/api/checkout\"}[5m])) by (status)",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Checkout RPS by status",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.99, sum(rate(checkout_request_duration_seconds_bucket{path=\"/api/checkout\"}[5m])) by (le))",
+          "legendFormat": "p99",
+          "refId": "A"
+        }
+      ],
+      "title": "Checkout latency p99 (s)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Loki",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "id": 3,
+      "options": { "dedupStrategy": "none", "showTime": true },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "{compose_service=\"checkout-sim\"}",
+          "refId": "A"
+        }
+      ],
+      "title": "checkout-sim logs",
+      "type": "logs"
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["obs-platform", "demo"],
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "checkout-sim (demo)",
+  "uid": "checkout-sim-demo",
+  "version": 1
+}

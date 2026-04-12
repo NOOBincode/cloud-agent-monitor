@@ -1,0 +1,31 @@
+groups:
+  - name: checkout-sim
+    rules:
+      - alert: CheckoutHigh5xxRate
+        expr: |
+          sum(rate(checkout_requests_total{path="/api/checkout",status="500"}[5m]))
+            /
+          sum(rate(checkout_requests_total{path="/api/checkout"}[5m]))
+            > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: checkout-sim
+        annotations:
+          summary: "checkout-sim 5xx 比例过高"
+          description: "5 分钟内 /api/checkout 的 5xx 占比 > 5%。查看 Grafana 与 Loki，并运行故障注入 reset。"
+          runbook: "docs/runbooks/checkout-sim.md"
+
+      - alert: CheckoutLatencyP99High
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(checkout_request_duration_seconds_bucket{path="/api/checkout"}[5m])) by (le)
+          ) > 0.8
+        for: 3m
+        labels:
+          severity: warning
+          service: checkout-sim
+        annotations:
+          summary: "checkout-sim P99 延迟过高"
+          description: "P99 > 800ms（常与 chaos latency 注入相关）。"
+          runbook: "docs/runbooks/checkout-sim.md"

@@ -1,0 +1,49 @@
+server:
+  addr: ":8080"
+  shutdown_timeout: "10s"
+
+database:
+  driver: "mysql"
+  host: "mysql"
+  port: 3306
+  user: "root"
+  password: "obs_root"
+  database: "obs_platform"
+  charset: "utf8mb4"
+  max_open_conns: 25
+  max_idle_conns: 10
+  conn_max_lifetime: "5m"
+  conn_max_idle_time: "1m"
+
+log:
+  level: "info"
+  format: "json"
+
+jwt:
+  secret_key: "your-secret-key-change-in-production"
+  access_token_expiry: 60
+  refresh_token_expiry: 7
+  issuer: "cloud-agent-monitor"
+
+prometheus:
+  url: "prometheus:9090"
+  timeout: "30s"
+  max_retries: 3
+  retry_delay: "1s"
+
+health_check:
+  enabled: true
+  check_interval: "1m"
+  unhealthy_threshold: 3
+  healthy_threshold: 2
+
+alertmanager:
+  url: "alertmanager:9093"
+  timeout: "30s"
+  max_retries: 3
+  retry_delay: "1s"
+
+redis:
+  addr: "redis:6379"
+  password: ""
+  db: 0

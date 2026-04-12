@@ -1,0 +1,12 @@
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+coverage.out
+vendor/
+
+.idea/
+.trae/
+.vscode/
+skills/
