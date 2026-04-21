@@ -1,28 +1,170 @@
 # 本地观测栈 + demo 应用 + 故障注入容器
-# 用法：在仓库根目录执行
-#   docker compose -f deploy/compose/docker-compose.yml up -d --build
-# 故障注入（独立一次性任务，需 profile inject，避免与 run 容器名冲突）：
-#   docker compose -f deploy/compose/docker-compose.yml --profile inject run --rm fault-injector /scripts/inject.sh demo
+# 
+# 用法：
+#   # 启动基础设施服务（不含 platform-api，用于本地开发）
+#   docker compose up -d
+#   
+#   # 启动完整服务（含 platform-api）
+#   docker compose --profile app up -d --build
+#   
+#   # 故障注入（独立一次性任务）
+#   docker compose --profile inject run --rm fault-injector /scripts/inject.sh demo
+# 
+# Zep 服务需要 GitHub Container Registry 认证：
+#   echo YOUR_GITHUB_PAT | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
 
 services:
-  mysql:
-    profiles: ["mysql"]
-    image: mysql:8.0
-    container_name: obs-mysql
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: obs-postgres
     environment:
-      MYSQL_ROOT_PASSWORD: obs_root
-      MYSQL_DATABASE: obs_platform
-      MYSQL_USER: obs
-      MYSQL_PASSWORD: obs
+      POSTGRES_USER: obs
+      POSTGRES_PASSWORD: obs
+      POSTGRES_DB: obs_platform
     ports:
-      - "3306:3306"
+      - "5432:5432"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pobs_root"]
+      test: ["CMD-SHELL", "pg_isready -U obs -d obs_platform"]
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - obs
+
+  neo4j:
+    image: neo4j:5.22.0
+    container_name: obs-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/obs_neo4j_password
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_memory_heap_initial__size: 512m
+      NEO4J_dbms_memory_heap_max__size: 1G
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - obs
+
+  opensearch:
+    image: opensearchproject/opensearch:2.18.0
+    container_name: obs-opensearch
+    environment:
+      cluster.name: obs-cluster
+      node.name: obs-opensearch
+      discovery.type: single-node
+      bootstrap.memory_lock: true
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+      DISABLE_SECURITY_PLUGIN: true
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - obs
+
+  zep:
+    image: ghcr.io/getzep/zep:0.27.2
+    container_name: obs-zep
+    volumes:
+      - ./zep/config.yaml:/app/config.yaml:ro
+    environment:
+      ZEP_OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-placeholder}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+    networks:
+      - obs
+
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.105.0
+    container_name: obs-victoriametrics
+    command:
+      - -storageDataPath=/storage
+      - -retentionPeriod=90d
+      - -memory.allowedPercent=80
+      - -httpListenAddr=0.0.0.0:8428
+    ports:
+      - "8428:8428"
+    volumes:
+      - vm_data:/storage
+    networks:
+      - obs
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8428/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  victoriatraces:
+    image: victoriametrics/victoria-traces:latest
+    container_name: obs-victoriatraces
+    command:
+      - -storageDataPath=/storage
+      - -retentionPeriod=30d
+      - -httpListenAddr=0.0.0.0:9480
+    ports:
+      - "9480:9480"
+      - "9481:9481"
+    volumes:
+      - vtraces_data:/storage
+    networks:
+      - obs
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9480/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  victorialogs:
+    image: victoriametrics/victoria-logs:latest
+    container_name: obs-victorialogs
+    command:
+      - -storageDataPath=/storage
+      - -retentionPeriod=30d
+      - -httpListenAddr=0.0.0.0:9428
+    ports:
+      - "9428:9428"
+    volumes:
+      - vlogs_data:/storage
+    networks:
+      - obs
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9428/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
@@ -51,30 +193,6 @@ services:
     networks:
       - obs
 
-  victoriametrics:
-    image: victoriametrics/victoria-metrics:v1.105.0
-    container_name: obs-victoriametrics
-    command:
-      - -storageDataPath=/storage
-      - -retentionPeriod=90d
-      - -maxLabelsPerSeries=30
-      - -maxSeriesPerQuery=10000
-      - -maxSamplesPerQuery=10000000
-      - -memory.allowedPercent=80
-      - -search.maxSeries=100000
-      - -search.maxPointsPerTimeseries=30000
-    ports:
-      - "8428:8428"
-    volumes:
-      - vm_data:/storage
-    networks:
-      - obs
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8428/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-
   prometheus:
     image: prom/prometheus:v2.55.1
     container_name: obs-prometheus
@@ -91,8 +209,10 @@ services:
     networks:
       - obs
     depends_on:
-      - checkout-sim
-      - victoriametrics
+      victoriametrics:
+        condition: service_healthy
+      alertmanager:
+        condition: service_healthy
 
   loki:
     image: grafana/loki:2.9.8
@@ -132,7 +252,9 @@ services:
       - obs
     depends_on:
       - prometheus
-      - loki
+      - victoriametrics
+      - victoriatraces
+      - victorialogs
 
   alertmanager:
     image: prom/alertmanager:v0.27.0
@@ -156,6 +278,7 @@ services:
       retries: 3
 
   platform-api:
+    profiles: ["app"]
     build:
       context: ../..
       dockerfile: deploy/Dockerfile
@@ -169,10 +292,13 @@ services:
     networks:
       - obs
     depends_on:
+      - postgres
       - redis
       - prometheus
       - alertmanager
       - victoriametrics
+      - victoriatraces
+      - zep
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
       interval: 30s
@@ -207,8 +333,13 @@ networks:
     driver: bridge
 
 volumes:
-  mysql_data:
+  postgres_data:
+  neo4j_data:
+  neo4j_logs:
+  opensearch_data:
   grafana_data:
   vm_data:
+  vtraces_data:
+  vlogs_data:
   alertmanager_data:
   redis_data:

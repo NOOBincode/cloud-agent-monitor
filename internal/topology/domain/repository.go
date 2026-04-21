@@ -80,6 +80,7 @@ type TopologyCache interface {
 	// 影响范围缓存
 	GetImpactCache(ctx context.Context, serviceID uuid.UUID) (*ImpactResult, error)
 	SetImpactCache(ctx context.Context, serviceID uuid.UUID, result *ImpactResult, ttl time.Duration) error
+	DeleteImpactCache(ctx context.Context, serviceID uuid.UUID) error
 
 	// 清除缓存
 	InvalidateAll(ctx context.Context) error

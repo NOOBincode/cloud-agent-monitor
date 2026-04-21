@@ -8,18 +8,18 @@ import (
 )
 
 type User struct {
-	ID                    uuid.UUID      `gorm:"type:char(36);primaryKey" json:"id"`
-	Username              string         `gorm:"type:varchar(255);uniqueIndex;not null" json:"username"`
-	Email                 string         `gorm:"type:varchar(255);uniqueIndex" json:"email"`
-	PasswordHash          string         `gorm:"type:varchar(255)" json:"-"`
-	DisplayName           string         `gorm:"type:varchar(255)" json:"display_name"`
-	IsActive              bool           `gorm:"default:true;index" json:"is_active"`
-	TenantID              *uuid.UUID     `gorm:"type:char(36);index" json:"tenant_id,omitempty"`
-	PasswordResetToken    *string        `gorm:"type:varchar(255);index" json:"-"`
-	PasswordResetExpires  *time.Time     `json:"-"`
-	CreatedAt             time.Time      `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt             time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
-	DeletedAt             gorm.DeletedAt `gorm:"index" json:"-"`
+	ID                   uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Username             string         `gorm:"type:varchar(255);uniqueIndex;not null" json:"username"`
+	Email                string         `gorm:"type:varchar(255);uniqueIndex" json:"email"`
+	PasswordHash         string         `gorm:"type:varchar(255)" json:"-"`
+	DisplayName          string         `gorm:"type:varchar(255)" json:"display_name"`
+	IsActive             bool           `gorm:"default:true;index" json:"is_active"`
+	TenantID             *uuid.UUID     `gorm:"type:uuid;index" json:"tenant_id,omitempty"`
+	PasswordResetToken   *string        `gorm:"type:varchar(255);index" json:"-"`
+	PasswordResetExpires *time.Time     `json:"-"`
+	CreatedAt            time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt            time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
+	DeletedAt            gorm.DeletedAt `gorm:"index" json:"-"`
 
 	Roles   []Role   `gorm:"many2many:user_roles;" json:"roles,omitempty"`
 	APIKeys []APIKey `gorm:"foreignKey:UserID" json:"api_keys,omitempty"`
@@ -37,12 +37,12 @@ func (u *User) BeforeCreate(tx *gorm.DB) error {
 }
 
 type Role struct {
-	ID          uuid.UUID      `gorm:"type:char(36);primaryKey" json:"id"`
+	ID          uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	Name        string         `gorm:"type:varchar(100);uniqueIndex;not null" json:"name"`
 	Description string         `gorm:"type:text" json:"description"`
 	IsSystem    bool           `gorm:"default:false;index" json:"is_system"`
 	Permissions Permissions    `gorm:"type:json;serializer:json" json:"permissions"`
-	TenantID    *uuid.UUID     `gorm:"type:char(36);index" json:"tenant_id,omitempty"`
+	TenantID    *uuid.UUID     `gorm:"type:uuid;index" json:"tenant_id,omitempty"`
 	CreatedAt   time.Time      `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt   time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
@@ -72,8 +72,8 @@ type Permissions struct {
 }
 
 type UserRole struct {
-	UserID    uuid.UUID `gorm:"type:char(36);primaryKey"`
-	RoleID    uuid.UUID `gorm:"type:char(36);primaryKey"`
+	UserID    uuid.UUID `gorm:"type:uuid;primaryKey"`
+	RoleID    uuid.UUID `gorm:"type:uuid;primaryKey"`
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 }
 
@@ -82,8 +82,8 @@ func (UserRole) TableName() string {
 }
 
 type APIKey struct {
-	ID          uuid.UUID      `gorm:"type:char(36);primaryKey" json:"id"`
-	UserID      uuid.UUID      `gorm:"type:char(36);not null;index" json:"user_id"`
+	ID          uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	UserID      uuid.UUID      `gorm:"type:uuid;not null;index" json:"user_id"`
 	Name        string         `gorm:"type:varchar(255);not null" json:"name"`
 	Key         string         `gorm:"type:varchar(255);uniqueIndex;not null" json:"key"`
 	KeyHash     string         `gorm:"type:varchar(255);not null" json:"-"`
@@ -92,7 +92,7 @@ type APIKey struct {
 	ExpiresAt   *time.Time     `json:"expires_at,omitempty"`
 	LastUsedAt  *time.Time     `json:"last_used_at,omitempty"`
 	IsActive    bool           `gorm:"default:true;index" json:"is_active"`
-	TenantID    *uuid.UUID     `gorm:"type:char(36);index" json:"tenant_id,omitempty"`
+	TenantID    *uuid.UUID     `gorm:"type:uuid;index" json:"tenant_id,omitempty"`
 	CreatedAt   time.Time      `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt   time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
@@ -112,8 +112,8 @@ func (a *APIKey) BeforeCreate(tx *gorm.DB) error {
 }
 
 type LoginLog struct {
-	ID        uuid.UUID  `gorm:"type:char(36);primaryKey" json:"id"`
-	UserID    *uuid.UUID `gorm:"type:char(36);index" json:"user_id,omitempty"`
+	ID        uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	UserID    *uuid.UUID `gorm:"type:uuid;index" json:"user_id,omitempty"`
 	Username  string     `gorm:"type:varchar(255);index" json:"username"`
 	IPAddress string     `gorm:"type:varchar(45)" json:"ip_address"`
 	UserAgent string     `gorm:"type:varchar(500)" json:"user_agent"`

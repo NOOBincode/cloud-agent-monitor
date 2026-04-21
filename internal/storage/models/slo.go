@@ -10,10 +10,10 @@ import (
 type SLOStatus string
 
 const (
-	SLOStatusHealthy   SLOStatus = "healthy"
-	SLOStatusWarning   SLOStatus = "warning"
-	SLOStatusCritical  SLOStatus = "critical"
-	SLOStatusUnknown   SLOStatus = "unknown"
+	SLOStatusHealthy  SLOStatus = "healthy"
+	SLOStatusWarning  SLOStatus = "warning"
+	SLOStatusCritical SLOStatus = "critical"
+	SLOStatusUnknown  SLOStatus = "unknown"
 )
 
 type SLIType string
@@ -112,16 +112,16 @@ func (e *ErrorBudgetHistory) BeforeCreate(tx *gorm.DB) error {
 }
 
 type BurnRateAlert struct {
-	ID          uuid.UUID      `gorm:"type:char(36);primaryKey" json:"id"`
-	SLOID       uuid.UUID      `gorm:"type:char(36);not null;index" json:"slo_id"`
-	SLOName     string         `gorm:"type:varchar(255);not null" json:"slo_name"`
-	ServiceName string         `gorm:"type:varchar(255);not null" json:"service_name"`
-	CurrentRate float64        `gorm:"type:decimal(10,4);not null" json:"current_rate"`
-	Threshold   float64        `gorm:"type:decimal(10,4);not null" json:"threshold"`
-	Severity    string         `gorm:"type:varchar(20);not null;index" json:"severity"`
-	Window      string         `gorm:"type:varchar(50);not null" json:"window"`
-	FiredAt     time.Time      `gorm:"autoCreateTime;index" json:"fired_at"`
-	ResolvedAt  *time.Time     `json:"resolved_at,omitempty"`
+	ID          uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	SLOID       uuid.UUID  `gorm:"type:uuid;not null;index" json:"slo_id"`
+	SLOName     string     `gorm:"type:varchar(255);not null" json:"slo_name"`
+	ServiceName string     `gorm:"type:varchar(255);not null" json:"service_name"`
+	CurrentRate float64    `gorm:"type:decimal(10,4);not null" json:"current_rate"`
+	Threshold   float64    `gorm:"type:decimal(10,4);not null" json:"threshold"`
+	Severity    string     `gorm:"type:varchar(20);not null;index" json:"severity"`
+	Window      string     `gorm:"type:varchar(50);not null" json:"window"`
+	FiredAt     time.Time  `gorm:"autoCreateTime;index" json:"fired_at"`
+	ResolvedAt  *time.Time `json:"resolved_at,omitempty"`
 
 	SLO *SLO `gorm:"foreignKey:SLOID" json:"slo,omitempty"`
 }

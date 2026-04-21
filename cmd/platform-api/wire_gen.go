@@ -17,18 +17,30 @@ import (
 	infrastructure2 "cloud-agent-monitor/internal/slo/infrastructure"
 	http2 "cloud-agent-monitor/internal/slo/interfaces/http"
 	"cloud-agent-monitor/internal/storage"
-	"cloud-agent-monitor/internal/storage/models"
+	application3 "cloud-agent-monitor/internal/topology/application"
+	"cloud-agent-monitor/internal/topology/domain"
+	"cloud-agent-monitor/internal/topology/infrastructure/cache"
+	"cloud-agent-monitor/internal/topology/infrastructure/kubernetes"
+	"cloud-agent-monitor/internal/topology/infrastructure/prometheus"
+	storage2 "cloud-agent-monitor/internal/topology/infrastructure/storage"
+	http3 "cloud-agent-monitor/internal/topology/interfaces/http"
 	"cloud-agent-monitor/internal/user"
 	"cloud-agent-monitor/pkg/config"
 	"cloud-agent-monitor/pkg/infra"
 	"cloud-agent-monitor/pkg/version"
 	"context"
-	"github.com/gin-gonic/gin"
-	"github.com/google/wire"
-	"gorm.io/gorm"
-	http3 "net/http"
+	"log"
+	http4 "net/http"
 	"os"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/wire"
+	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
+	kubernetes2 "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 // Injectors from wire.go:
@@ -63,7 +75,7 @@ func InitializeApp() (*App, error) {
 	alertNoiseRepositoryInterface := ProvideAlertNoiseRepository(db)
 	alertNotificationRepositoryInterface := ProvideAlertNotificationRepository(db)
 	alertRecordRepositoryInterface := ProvideAlertRecordRepository(db)
-	cache := ProvideCache()
+	cache := ProvideCache(config)
 	queue := ProvideQueue(config)
 	alertRecordBuffer := ProvideAlertRecordBuffer(alertRecordRepositoryInterface, queue)
 	alertService := ProvideAlertService(alertmanagerClient, alertOperationRepositoryInterface, alertNoiseRepositoryInterface, alertNotificationRepositoryInterface, alertRecordRepositoryInterface, cache, queue, alertRecordBuffer)
@@ -73,8 +85,16 @@ func InitializeApp() (*App, error) {
 	prometheusSLICollector := ProvideSLICollector(client)
 	sloService := ProvideSLOService(sloRepository, sliRepository, prometheusSLICollector, cache)
 	handler2 := ProvideSLOHandler(sloService)
-	engine := ProvideHTTPServer(db, serviceRepositoryInterface, handler, authMiddleware, casbinEnforcer, serviceHandler, healthCheckService, httpHandler, handler2)
-	app := ProvideApp(config, db, engine)
+	repository := ProvideTopologyRepository(db)
+	redisClient := ProvideRedisClient(config)
+	redisCache := ProvideTopologyCache(redisClient)
+	backend := ProvidePrometheusTopologyBackend(client)
+	v := ProvideTopologyDiscoverers(config, backend)
+	topologyService := ProvideTopologyService(repository, redisCache, v, cache, queue, config)
+	handler3 := ProvideTopologyHandler(topologyService)
+	engine := ProvideHTTPServer(db, serviceRepositoryInterface, handler, authMiddleware, casbinEnforcer, serviceHandler, healthCheckService, httpHandler, handler2, handler3, roleRepositoryInterface)
+	impactCacheService := ProvideImpactCacheService(topologyService, redisCache, queue)
+	app := ProvideApp(config, db, engine, queue, topologyService, impactCacheService)
 	return app, nil
 }
 
@@ -89,28 +109,8 @@ func ProvideConfig() (*config.Config, error) {
 }
 
 func ProvideDatabase(cfg *config.Config) (*gorm.DB, error) {
-	db, err := storage.NewMySQLDB(cfg.Database)
+	db, err := storage.NewPostgresDB(cfg.Database)
 	if err != nil {
-		return nil, err
-	}
-	if err := db.AutoMigrate(
-		&models.User{},
-		&models.Role{},
-		&models.UserRole{},
-		&models.APIKey{},
-		&models.Service{},
-		&models.ServiceLabel{},
-		&models.ServiceDependency{},
-		&models.LoginLog{},
-		&models.AlertOperation{},
-		&models.AlertNoiseRecord{},
-		&models.AlertNotification{},
-		&models.AlertRecord{},
-		&models.SLO{},
-		&models.SLI{},
-		&models.ErrorBudgetHistory{},
-		&models.BurnRateAlert{},
-	); err != nil {
 		return nil, err
 	}
 	return db, nil
@@ -210,8 +210,12 @@ func ProvideAlertRecordRepository(db *gorm.DB) storage.AlertRecordRepositoryInte
 	return storage.NewAlertRecordRepository(db)
 }
 
-func ProvideCache() *infra.Cache {
-	return infra.NewCache(100)
+func ProvideCache(cfg *config.Config) *infra.Cache {
+	sizeMB := cfg.Topology.LocalCacheSize
+	if sizeMB <= 0 {
+		sizeMB = 100
+	}
+	return infra.NewCache(sizeMB)
 }
 
 func ProvideQueue(cfg *config.Config) *infra.Queue {
@@ -272,6 +276,94 @@ func ProvideSLOHandler(service *application2.SLOService) *http2.Handler {
 	return http2.NewHandler(service)
 }
 
+func ProvideRedisClient(cfg *config.Config) *redis.Client {
+	return redis.NewClient(&redis.Options{
+		Addr:     cfg.Redis.Addr,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+	})
+}
+
+func ProvideTopologyRepository(db *gorm.DB) *storage2.Repository {
+	return storage2.NewRepository(db)
+}
+
+func ProvideTopologyCache(client *redis.Client) *cache.RedisCache {
+	return cache.NewRedisCache(client)
+}
+
+func ProvidePrometheusTopologyBackend(promClient *promclient.Client) *prometheus.Backend {
+	return prometheus.NewBackend(promClient, nil)
+}
+
+func ProvideTopologyDiscoverers(
+	cfg *config.Config,
+	promBackend *prometheus.Backend,
+) []domain.DiscoveryBackend {
+	var discoverers []domain.DiscoveryBackend
+
+	if cfg.Topology.Kubernetes.Enabled {
+		k8sBackend, err := provideKubernetesBackend(cfg)
+		if err != nil {
+			log.Printf("failed to create kubernetes topology backend: %v", err)
+		} else if k8sBackend != nil {
+			discoverers = append(discoverers, k8sBackend)
+		}
+	}
+
+	discoverers = append(discoverers, promBackend)
+	return discoverers
+}
+
+func provideKubernetesBackend(cfg *config.Config) (*kubernetes.Backend, error) {
+	k8sCfg := cfg.Topology.Kubernetes
+	var restConfig *rest.Config
+	var err error
+
+	if k8sCfg.Kubeconfig != "" {
+		restConfig, err = clientcmd.BuildConfigFromFlags(k8sCfg.MasterURL, k8sCfg.Kubeconfig)
+	} else {
+		restConfig, err = clientcmd.BuildConfigFromFlags(k8sCfg.MasterURL, "")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	clientset, err := kubernetes2.NewForConfig(restConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	return kubernetes.NewBackend(clientset, &kubernetes.Config{
+		Namespaces: k8sCfg.Namespaces,
+	}), nil
+}
+
+func ProvideTopologyService(
+	repo *storage2.Repository, cache2 *cache.RedisCache,
+	discoverers []domain.DiscoveryBackend,
+	localCache *infra.Cache,
+	queue *infra.Queue,
+	cfg *config.Config,
+) *application3.TopologyService {
+	return application3.NewTopologyService(repo, cache2, discoverers, localCache, queue, &application3.Config{
+		RefreshInterval: cfg.Topology.RefreshInterval,
+		CacheTTL:        cfg.Topology.CacheTTL,
+		MaxDepth:        cfg.Topology.MaxDepth,
+	})
+}
+
+func ProvideImpactCacheService(
+	service *application3.TopologyService, cache2 *cache.RedisCache,
+	queue *infra.Queue,
+) *application3.ImpactCacheService {
+	return application3.NewImpactCacheService(service, cache2, service.GetAnalyzer(), queue, nil)
+}
+
+func ProvideTopologyHandler(service *application3.TopologyService) *http3.Handler {
+	return http3.NewHandler(service)
+}
+
 func ProvideHTTPServer(
 	db *gorm.DB,
 	repo storage.ServiceRepositoryInterface,
@@ -282,6 +374,8 @@ func ProvideHTTPServer(
 	healthCheckService *platform.HealthCheckService,
 	alertHandler *http.Handler,
 	sloHandler *http2.Handler,
+	topologyHandler *http3.Handler,
+	roleRepo storage.RoleRepositoryInterface,
 ) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
@@ -296,9 +390,9 @@ func ProvideHTTPServer(
 			dbStatus = "error: " + err.Error()
 		}
 
-		status := http3.StatusOK
+		status := http4.StatusOK
 		if dbStatus != "ok" {
-			status = http3.StatusServiceUnavailable
+			status = http4.StatusServiceUnavailable
 		}
 
 		c.JSON(status, gin.H{
@@ -311,7 +405,7 @@ func ProvideHTTPServer(
 
 	v1 := r.Group("/api/v1")
 	http.RegisterPublicRoutes(v1, alertHandler)
-	user.RegisterRoutes(v1, userHandler, authMiddleware)
+	user.RegisterRoutesWithRole(v1, userHandler, authMiddleware, roleRepo)
 
 	protected := v1.Group("")
 	protected.Use(authMiddleware.RequireAPIKey())
@@ -319,17 +413,28 @@ func ProvideHTTPServer(
 	platform.RegisterRoutesWithHealthCheck(protected, repo, healthCheckService)
 	http.RegisterRoutes(protected, alertHandler)
 	http2.RegisterRoutes(protected, sloHandler)
+	http3.RegisterRoutes(protected, topologyHandler)
 
 	healthCheckService.Start()
 
 	return r
 }
 
-func ProvideApp(cfg *config.Config, db *gorm.DB, server *gin.Engine) *App {
+func ProvideApp(
+	cfg *config.Config,
+	db *gorm.DB,
+	server *gin.Engine,
+	queue *infra.Queue,
+	topoSvc *application3.TopologyService,
+	impactCache *application3.ImpactCacheService,
+) *App {
 	return &App{
-		config: cfg,
-		server: server,
-		db:     db,
+		config:      cfg,
+		server:      server,
+		db:          db,
+		queue:       queue,
+		topoSvc:     topoSvc,
+		impactCache: impactCache,
 	}
 }
 
@@ -364,6 +469,14 @@ var ProviderSet = wire.NewSet(
 	ProvideSLICollector,
 	ProvideSLOService,
 	ProvideSLOHandler,
+	ProvideRedisClient,
+	ProvideTopologyRepository,
+	ProvideTopologyCache,
+	ProvidePrometheusTopologyBackend,
+	ProvideTopologyDiscoverers,
+	ProvideTopologyService,
+	ProvideImpactCacheService,
+	ProvideTopologyHandler,
 	ProvideHTTPServer,
 	ProvideApp,
 )

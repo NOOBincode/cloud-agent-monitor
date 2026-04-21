@@ -30,16 +30,16 @@ func TestServiceRepositoryIntegration(t *testing.T) {
 
 func (s *ServiceRepositoryIntegrationSuite) SetupSuite() {
 	cfg := config.DatabaseConfig{
+		Driver:   "postgres",
 		Host:     getEnv("TEST_DATABASE_HOST", "127.0.0.1"),
-		Port:     3306,
-		User:     getEnv("TEST_DATABASE_USER", "root"),
-		Password: getEnv("TEST_DATABASE_PASSWORD", "root"),
+		Port:     5432,
+		User:     getEnv("TEST_DATABASE_USER", "obs"),
+		Password: getEnv("TEST_DATABASE_PASSWORD", "obs"),
 		Database: getEnv("TEST_DATABASE_NAME", "obs_platform_test"),
-		Charset:  "utf8mb4",
 	}
 
 	var err error
-	s.db, err = NewMySQLDB(cfg)
+	s.db, err = NewPostgresDB(cfg)
 	require.NoError(s.T(), err)
 
 	err = s.db.Exec("DROP TABLE IF EXISTS services").Error

@@ -16,11 +16,11 @@ const (
 )
 
 type Service struct {
-	ID          uuid.UUID      `gorm:"type:char(36);primaryKey" json:"id"`
-	Name        string         `gorm:"type:varchar(255);uniqueIndex;not null" json:"name"`
-	Description string         `gorm:"type:text" json:"description"`
-	Environment string         `gorm:"type:varchar(50);not null;default:'local';index" json:"environment"`
-	Labels      Labels         `gorm:"type:json;serializer:json" json:"labels"`
+	ID          uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Name        string    `gorm:"type:varchar(255);uniqueIndex;not null" json:"name"`
+	Description string    `gorm:"type:text" json:"description"`
+	Environment string    `gorm:"type:varchar(50);not null;default:'local';index" json:"environment"`
+	Labels      Labels    `gorm:"type:json;serializer:json" json:"labels"`
 
 	Endpoint    string `gorm:"type:varchar(500)" json:"endpoint"`
 	OpenAPISpec string `gorm:"type:longtext" json:"openapi_spec,omitempty"`
@@ -29,10 +29,10 @@ type Service struct {
 	LastHealthCheckAt  *time.Time   `json:"last_health_check_at,omitempty"`
 	HealthCheckDetails string       `gorm:"type:text" json:"health_check_details,omitempty"`
 
-	Maintainer  string `gorm:"type:varchar(255)" json:"maintainer,omitempty"`
-	Team        string `gorm:"type:varchar(255)" json:"team,omitempty"`
+	Maintainer       string `gorm:"type:varchar(255)" json:"maintainer,omitempty"`
+	Team             string `gorm:"type:varchar(255)" json:"team,omitempty"`
 	DocumentationURL string `gorm:"type:varchar(500)" json:"documentation_url,omitempty"`
-	RepositoryURL string `gorm:"type:varchar(500)" json:"repository_url,omitempty"`
+	RepositoryURL    string `gorm:"type:varchar(500)" json:"repository_url,omitempty"`
 
 	CreatedAt time.Time      `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
@@ -92,8 +92,8 @@ func (d *ServiceDependency) BeforeCreate(tx *gorm.DB) error {
 }
 
 const (
-	RelationTypeDependsOn  = "depends_on"
-	RelationTypeCalls      = "calls"
-	RelationTypeProvides   = "provides"
-	RelationTypeConsumes   = "consumes"
+	RelationTypeDependsOn = "depends_on"
+	RelationTypeCalls     = "calls"
+	RelationTypeProvides  = "provides"
+	RelationTypeConsumes  = "consumes"
 )

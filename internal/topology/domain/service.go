@@ -59,16 +59,6 @@ type TopologyService interface {
 	GetTopologyStats(ctx context.Context) (*TopologyStats, error)
 }
 
-// TopologyAnomaly 表示拓扑异常
-type TopologyAnomaly struct {
-	Type        string    `json:"type"` // isolated/circular/hotspot/single_point
-	EntityID    uuid.UUID `json:"entity_id"`
-	EntityName  string    `json:"entity_name"`
-	Description string    `json:"description"`
-	Severity    string    `json:"severity"` // critical/high/medium/low
-	DetectedAt  time.Time `json:"detected_at"`
-}
-
 // TopologyStats 表示拓扑统计信息
 type TopologyStats struct {
 	ServiceNodeCount  int           `json:"service_node_count"`

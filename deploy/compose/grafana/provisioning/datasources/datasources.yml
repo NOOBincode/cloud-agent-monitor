@@ -20,6 +20,27 @@ datasources:
       httpMethod: POST
       customQueryParameters: 'tenant_id=default'
 
+  - name: VictoriaTraces
+    type: tempo
+    access: proxy
+    url: http://victoriatraces:9480
+    editable: false
+    jsonData:
+      httpMethod: GET
+      tracesToLogsV2:
+        datasourceUid: victorialogs
+      serviceMap:
+        datasourceUid: victoriametrics
+
+  - name: VictoriaLogs
+    type: victorialogs-datasource
+    access: proxy
+    url: http://victorialogs:9428
+    uid: victorialogs
+    editable: false
+    jsonData:
+      httpMethod: POST
+
   - name: Loki
     type: loki
     access: proxy

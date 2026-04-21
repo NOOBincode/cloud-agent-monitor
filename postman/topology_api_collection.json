@@ -1,0 +1,551 @@
+{
+	"info": {
+		"_postman_id": "topology-api-collection",
+		"name": "Topology API",
+		"description": "Cloud Agent Monitor - Topology Module API Collection\n\n拓扑模块提供 Kubernetes 集群服务拓扑发现、影响分析、路径查找等功能。\n\n## 功能模块\n\n### 服务拓扑\n- 获取服务拓扑数据\n- 查询服务节点详情\n- 分析上下游依赖关系\n- 影响范围分析\n\n### 网络拓扑\n- 获取网络拓扑数据\n- 查询网络节点详情\n\n### 路径分析\n- 查找服务间调用路径\n- 查找最短路径\n\n### 异常检测\n- 检测拓扑中的异常服务\n\n### 历史与统计\n- 获取历史拓扑快照\n- 获取拓扑变更记录\n- 获取拓扑统计信息",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8080/api/v1",
+			"type": "string"
+		},
+		{
+			"key": "service_id",
+			"value": "00000000-0000-0000-0000-000000000001",
+			"type": "string"
+		},
+		{
+			"key": "network_id",
+			"value": "00000000-0000-0000-0000-000000000002",
+			"type": "string"
+		},
+		{
+			"key": "namespace",
+			"value": "default",
+			"type": "string"
+		},
+		{
+			"key": "service_name",
+			"value": "user-service",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Service Topology",
+			"item": [
+				{
+					"name": "Get Service Topology",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/topology/services?namespace={{namespace}}&service_name={{service_name}}",
+							"host": ["{{base_url}}"],
+							"path": ["topology", "services"],
+							"query": [
+								{
+									"key": "namespace",
+									"value": "{{namespace}}",
+									"description": "Filter by namespace (optional)"
+								},
+								{
+									"key": "service_name",
+									"value": "{{service_name}}",
+									"description": "Filter by service name (optional)"
+								}
+							]
+						},
+						"description": "获取服务拓扑数据，包含所有服务节点和调用边。\n\n**Query Parameters:**\n- `namespace`: 按命名空间过滤（可选）\n- `service_name`: 按服务名称过滤（可选）\n\n**Response:**\n```json\n{\n  \"code\": 0,\n  \"message\": \"success\",\n  \"data\": {\n    \"id\": \"uuid\",\n    \"timestamp\": \"2024-01-01T00:00:00Z\",\n    \"nodes\": [...],\n    \"edges\": [...]\n  }\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Service Node by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/topology/services/{{service_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["topology", "services", "{{service_id}}"]
+						},
+						"description": "根据 ID 获取服务节点详情。\n\n**Path Parameters:**\n- `id`: 服务节点 UUID\n\n**Response:**\n```json\n{\n  \"code\": 0,\n  \"message\": \"success\",\n  \"data\": {\n    \"id\": \"uuid\",\n    \"name\": \"user-service\",\n    \"namespace\": \"default\",\n    \"status\": \"healthy\",\n    \"request_rate\": 1000,\n    \"error_rate\": 0.5,\n    \"latency_p99\": 100\n  }\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Service Node by Name",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/topology/services/{{namespace}}/{{service_name}}",
+							"host": ["{{base_url}}"],
+							"path": ["topology", "services", "{{namespace}}", "{{service_name}}"]
+						},
+						"description": "根据命名空间和服务名称获取服务节点详情。\n\n**Path Parameters:**\n- `namespace`: 命名空间\n- `name`: 服务名称\n\n**Response:**\n```json\n{\n  \"code\": 0,\n  \"message\": \"success\",\n  \"data\": {\n    \"id\": \"uuid\",\n    \"name\": \"user-service\",\n    \"namespace\": \"default\",\n    \"status\": \"healthy\"\n  }\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Upstream Services",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/topology/services/{{service_id}}/upstream?depth=3",
+							"host": ["{{base_url}}"],
+							"path": ["topology", "services", "{{service_id}}", "upstream"],
+							"query": [
+								{
+									"key": "depth",
+									"value": "3",
+									"description": "Traversal depth (1-20, default: 5)"
+								}
+							]
+						},
+						"description": "获取指定服务的上游依赖服务。\n\n**Path Parameters:**\n- `id`: 服务节点 UUID\n\n**Query Parameters:**\n- `depth`: 遍历深度，范围 1-20，默认 5\n\n**Response:**\n```json\n{\n  \"code\": 0,\n  \"message\": \"success\",\n  \"data\": {\n    \"service_id\": \"uuid\",\n    \"upstream\": [...],\n    \"depth\": 3\n  }\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Downstream Services",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/topology/services/{{service_id}}/downstream?depth=3",
+							"host": ["{{base_url}}"],
+							"path": ["topology", "services", "{{service_id}}", "downstream"],
+							"query": [
+								{
+									"key": "depth",
+									"value": "3",
+									"description": "Traversal depth (1-20, default: 5)"
+								}
+							]
+						},
+						"description": "获取指定服务的下游被依赖服务。\n\n**Path Parameters:**\n- `id`: 服务节点 UUID\n\n**Query Parameters:**\n- `depth`: 遍历深度，范围 1-20，默认 5\n\n**Response:**\n```json\n{\n  \"code\": 0,\n  \"message\": \"success\",\n  \"data\": {\n    \"service_id\": \"uuid\",\n    \"downstream\": [...],\n    \"depth\": 3\n  }\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Analyze Impact",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/topology/services/{{service_id}}/impact?max_depth=5",
+							"host": ["{{base_url}}"],
+							"path": ["topology", "services", "{{service_id}}", "impact"],
+							"query": [
+								{
+									"key": "max_depth",
+									"value": "5",
+									"description": "Maximum analysis depth (1-20, default: 5)"
+								}
+							]
+						},
+						"description": "分析指定服务故障的影响范围。\n\n**Path Parameters:**\n- `id`: 服务节点 UUID\n\n**Query Parameters:**\n- `max_depth`: 最大分析深度，范围 1-20，默认 5\n\n**Response:**\n```json\n{\n  \"code\": 0,\n  \"message\": \"success\",\n  \"data\": {\n    \"root_service\": {...},\n    \"impact_score\": 0.85,\n    \"impact_level\": \"high\",\n    \"affected_services\": [...],\n    \"propagation_paths\": [...]\n  }\n}\n```"
+					},
+					"response": []
+				}
+			],
+			"description": "服务拓扑相关接口"
+		},
+		{
+			"name": "Network Topology",
+			"item": [
+				{
+					"name": "Get Network Topology",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/topology/network?namespace={{namespace}}",
+							"host": ["{{base_url}}"],
+							"path": ["topology", "network"],
+							"query": [
+								{
+									"key": "namespace",
+									"value": "{{namespace}}",
+									"description": "Filter by namespace (optional)"
+								}
+							]
+						},
+						"description": "获取网络拓扑数据，包含 Pod、Node、Service、Ingress 等网络实体。\n\n**Query Parameters:**\n- `namespace`: 按命名空间过滤（可选）\n\n**Response:**\n```json\n{\n  \"code\": 0,\n  \"message\": \"success\",\n  \"data\": {\n    \"id\": \"uuid\",\n    \"timestamp\": \"2024-01-01T00:00:00Z\",\n    \"nodes\": [...],\n    \"edges\": [...]\n  }\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Network Node",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/topology/network/{{network_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["topology", "network", "{{network_id}}"]
+						},
+						"description": "根据 ID 获取网络节点详情。\n\n**Path Parameters:**\n- `id`: 网络节点 UUID\n\n**Response:**\n```json\n{\n  \"code\": 0,\n  \"message\": \"success\",\n  \"data\": {\n    \"id\": \"uuid\",\n    \"name\": \"pod-network-1\",\n    \"type\": \"pod\",\n    \"layer\": \"pod\",\n    \"namespace\": \"default\"\n  }\n}\n```"
+					},
+					"response": []
+				}
+			],
+			"description": "网络拓扑相关接口"
+		},
+		{
+			"name": "Path Analysis",
+			"item": [
+				{
+					"name": "Find Path",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/topology/path?source_id={{service_id}}&target_id=00000000-0000-0000-0000-000000000003&max_hops=10",
+							"host": ["{{base_url}}"],
+							"path": ["topology", "path"],
+							"query": [
+								{
+									"key": "source_id",
+									"value": "{{service_id}}",
+									"description": "Source service UUID (required)"
+								},
+								{
+									"key": "target_id",
+									"value": "00000000-0000-0000-0000-000000000003",
+									"description": "Target service UUID (required)"
+								},
+								{
+									"key": "max_hops",
+									"value": "10",
+									"description": "Maximum hops (1-30, default: 10)"
+								}
+							]
+						},
+						"description": "查找两个服务之间的所有调用路径。\n\n**Query Parameters:**\n- `source_id`: 源服务 UUID（必填）\n- `target_id`: 目标服务 UUID（必填）\n- `max_hops`: 最大跳数，范围 1-30，默认 10\n\n**Response:**\n```json\n{\n  \"code\": 0,\n  \"message\": \"success\",\n  \"data\": {\n    \"source_id\": \"uuid\",\n    \"target_id\": \"uuid\",\n    \"paths\": [\n      {\n        \"hops\": [...],\n        \"total_latency\": 150\n      }\n    ],\n    \"path_count\": 1\n  }\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Find Shortest Path",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/topology/path/shortest?source_id={{service_id}}&target_id=00000000-0000-0000-0000-000000000003",
+							"host": ["{{base_url}}"],
+							"path": ["topology", "path", "shortest"],
+							"query": [
+								{
+									"key": "source_id",
+									"value": "{{service_id}}",
+									"description": "Source service UUID (required)"
+								},
+								{
+									"key": "target_id",
+									"value": "00000000-0000-0000-0000-000000000003",
+									"description": "Target service UUID (required)"
+								}
+							]
+						},
+						"description": "查找两个服务之间的最短路径（BFS 算法）。\n\n**Query Parameters:**\n- `source_id`: 源服务 UUID（必填）\n- `target_id`: 目标服务 UUID（必填）\n\n**Response:**\n```json\n{\n  \"code\": 0,\n  \"message\": \"success\",\n  \"data\": {\n    \"source_id\": \"uuid\",\n    \"target_id\": \"uuid\",\n    \"path\": [...],\n    \"hops\": 3\n  }\n}\n```"
+					},
+					"response": []
+				}
+			],
+			"description": "路径分析相关接口"
+		},
+		{
+			"name": "Anomaly Detection",
+			"item": [
+				{
+					"name": "Find Anomalies",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/topology/anomalies",
+							"host": ["{{base_url}}"],
+							"path": ["topology", "anomalies"]
+						},
+						"description": "检测当前拓扑中的异常服务。\n\n异常检测规则：\n- 高错误率（ErrorRate > 5%）\n- 高延迟（LatencyP99 > 1000ms）\n- 服务状态异常\n\n**Response:**\n```json\n{\n  \"code\": 0,\n  \"message\": \"success\",\n  \"data\": {\n    \"anomalies\": [\n      {\n        \"service_id\": \"uuid\",\n        \"service_name\": \"payment-service\",\n        \"anomaly_type\": \"high_error_rate\",\n        \"severity\": \"critical\",\n        \"metrics\": {...}\n      }\n    ],\n    \"count\": 1\n  }\n}\n```"
+					},
+					"response": []
+				}
+			],
+			"description": "异常检测相关接口"
+		},
+		{
+			"name": "History & Statistics",
+			"item": [
+				{
+					"name": "Get Topology at Time",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/topology/history?timestamp=2024-01-01T00:00:00Z",
+							"host": ["{{base_url}}"],
+							"path": ["topology", "history"],
+							"query": [
+								{
+									"key": "timestamp",
+									"value": "2024-01-01T00:00:00Z",
+									"description": "RFC3339 timestamp (required)"
+								}
+							]
+						},
+						"description": "获取指定时间点的历史拓扑快照。\n\n**Query Parameters:**\n- `timestamp`: RFC3339 格式时间戳（必填）\n\n**Response:**\n```json\n{\n  \"code\": 0,\n  \"message\": \"success\",\n  \"data\": {\n    \"id\": \"uuid\",\n    \"timestamp\": \"2024-01-01T00:00:00Z\",\n    \"nodes\": [...],\n    \"edges\": [...]\n  }\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Topology Changes",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/topology/changes?from=2024-01-01T00:00:00Z&to=2024-01-02T00:00:00Z",
+							"host": ["{{base_url}}"],
+							"path": ["topology", "changes"],
+							"query": [
+								{
+									"key": "from",
+									"value": "2024-01-01T00:00:00Z",
+									"description": "Start time RFC3339 (required)"
+								},
+								{
+									"key": "to",
+									"value": "2024-01-02T00:00:00Z",
+									"description": "End time RFC3339 (required)"
+								}
+							]
+						},
+						"description": "获取指定时间范围内的拓扑变更记录。\n\n**Query Parameters:**\n- `from`: 起始时间 RFC3339 格式（必填）\n- `to`: 结束时间 RFC3339 格式（必填）\n\n**Response:**\n```json\n{\n  \"code\": 0,\n  \"message\": \"success\",\n  \"data\": {\n    \"from\": \"2024-01-01T00:00:00Z\",\n    \"to\": \"2024-01-02T00:00:00Z\",\n    \"changes\": [\n      {\n        \"id\": \"uuid\",\n        \"change_type\": \"add\",\n        \"entity_type\": \"service\",\n        \"entity_id\": \"uuid\",\n        \"timestamp\": \"2024-01-01T12:00:00Z\"\n      }\n    ],\n    \"count\": 1\n  }\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Topology Stats",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/topology/stats",
+							"host": ["{{base_url}}"],
+							"path": ["topology", "stats"]
+						},
+						"description": "获取拓扑统计信息。\n\n**Response:**\n```json\n{\n  \"code\": 0,\n  \"message\": \"success\",\n  \"data\": {\n    \"service_node_count\": 50,\n    \"service_edge_count\": 120,\n    \"network_node_count\": 100,\n    \"network_edge_count\": 200,\n    \"healthy_count\": 45,\n    \"unhealthy_count\": 5,\n    \"last_updated\": \"2024-01-01T00:00:00Z\"\n  }\n}\n```"
+					},
+					"response": []
+				}
+			],
+			"description": "历史与统计相关接口"
+		},
+		{
+			"name": "Operations",
+			"item": [
+				{
+					"name": "Refresh Topology - All",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/topology/refresh?type=all",
+							"host": ["{{base_url}}"],
+							"path": ["topology", "refresh"],
+							"query": [
+								{
+									"key": "type",
+									"value": "all",
+									"description": "Topology type: all, service, network"
+								}
+							]
+						},
+						"description": "刷新所有拓扑数据（服务拓扑 + 网络拓扑）。\n\n**Query Parameters:**\n- `type`: 拓扑类型，可选值：`all`、`service`、`network`，默认 `all`\n\n**Response:**\n```json\n{\n  \"code\": 0,\n  \"message\": \"success\",\n  \"data\": {\n    \"message\": \"all topology refreshed\"\n  }\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Refresh Topology - Service Only",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/topology/refresh?type=service",
+							"host": ["{{base_url}}"],
+							"path": ["topology", "refresh"],
+							"query": [
+								{
+									"key": "type",
+									"value": "service",
+									"description": "Topology type: all, service, network"
+								}
+							]
+						},
+						"description": "仅刷新服务拓扑数据。\n\n**Query Parameters:**\n- `type`: `service`\n\n**Response:**\n```json\n{\n  \"code\": 0,\n  \"message\": \"success\",\n  \"data\": {\n    \"message\": \"service topology refreshed\"\n  }\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Refresh Topology - Network Only",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/topology/refresh?type=network",
+							"host": ["{{base_url}}"],
+							"path": ["topology", "refresh"],
+							"query": [
+								{
+									"key": "type",
+									"value": "network",
+									"description": "Topology type: all, service, network"
+								}
+							]
+						},
+						"description": "仅刷新网络拓扑数据。\n\n**Query Parameters:**\n- `type`: `network`\n\n**Response:**\n```json\n{\n  \"code\": 0,\n  \"message\": \"success\",\n  \"data\": {\n    \"message\": \"network topology refreshed\"\n  }\n}\n```"
+					},
+					"response": []
+				}
+			],
+			"description": "运维操作相关接口"
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{auth_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Pre-request script",
+					"// You can add authentication logic here"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Test script",
+					"pm.test('Status code is 200', function () {",
+					"    pm.response.to.have.status(200);",
+					"});",
+					"",
+					"pm.test('Response has correct structure', function () {",
+					"    var jsonData = pm.response.json();",
+					"    pm.expect(jsonData).to.have.property('code');",
+					"    pm.expect(jsonData).to.have.property('message');",
+					"    pm.expect(jsonData).to.have.property('data');",
+					"});",
+					"",
+					"pm.test('Response code is success', function () {",
+					"    var jsonData = pm.response.json();",
+					"    pm.expect(jsonData.code).to.eql(0);",
+					"});"
+				]
+			}
+		}
+	]
+}

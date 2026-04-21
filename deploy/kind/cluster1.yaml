@@ -1,0 +1,32 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: obs-cluster-1
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "topology.kubernetes.io/zone=zone-a"
+  - role: worker
+    kubeadmConfigPatches:
+      - |
+        kind: JoinConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "topology.kubernetes.io/zone=zone-a,nvidia.com/gpu.product=A100"
+    extraMounts:
+      - hostPath: /dev/null
+        containerPath: /dev/null
+  - role: worker
+    kubeadmConfigPatches:
+      - |
+        kind: JoinConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "topology.kubernetes.io/zone=zone-b,nvidia.com/gpu.product=V100"
+networking:
+  podSubnet: "10.10.0.0/16"
+  serviceSubnet: "10.11.0.0/16"
+  disableDefaultCNI: false

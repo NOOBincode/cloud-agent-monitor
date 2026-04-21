@@ -23,7 +23,7 @@ const (
 )
 
 type AlertRecord struct {
-	ID          uuid.UUID `gorm:"type:char(36);primaryKey" json:"id"`
+	ID          uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	Fingerprint string    `gorm:"type:varchar(64);index:idx_alert_record_fp;not null" json:"fingerprint"`
 	
 	Labels      Labels `gorm:"type:json;serializer:json" json:"labels"`

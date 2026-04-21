@@ -32,7 +32,7 @@ groups:
           description: "指标 {{ $labels.__name__ }} 的 series 数量: {{ $value }}，超过阈值 1000"
 
       - alert: HighLabelCardinality
-        expr: label_values({__name__=~".+"}, tenant_id) > 100
+        expr: count(count by (tenant_id) ({__name__=~".+"})) > 100
         for: 5m
         labels:
           severity: warning
@@ -52,7 +52,7 @@ groups:
           description: "当前内存使用: {{ $value | printf \"%.2f\" }}GB，超过阈值 4GB"
 
       - alert: PrometheusScrapeDuration
-        expr: histogram_quantile(0.9, rate(scrape_duration_seconds_sum[5m]) / rate(scrape_duration_seconds_count[5m])) > 10
+        expr: histogram_quantile(0.9, sum(rate(scrape_duration_seconds_bucket[5m])) by (le, job)) > 10
         for: 5m
         labels:
           severity: warning

@@ -3,11 +3,11 @@ server:
   shutdown_timeout: "10s"
 
 database:
-  driver: "mysql"
+  driver: "postgres"
   host: "127.0.0.1"
-  port: 3306
-  user: "root"
-  password: "root"
+  port: 5432
+  user: "obs"
+  password: "obs"
   database: "obs_platform"
   charset: "utf8mb4"
   max_open_conns: 25
@@ -42,3 +42,19 @@ alertmanager:
   timeout: "30s"
   max_retries: 3
   retry_delay: "1s"
+
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+
+topology:
+  refresh_interval: "30s"
+  cache_ttl: "5m"
+  max_depth: 10
+  local_cache_size: 100
+  kubernetes:
+    enabled: true
+    master_url: ""
+    kubeconfig: ""
+    namespaces: []

@@ -22,6 +22,22 @@ type Config struct {
 	HealthCheck  HealthCheckConfig
 	Alertmanager AlertmanagerConfig
 	Redis        RedisConfig
+	Topology     TopologyConfig
+}
+
+type TopologyConfig struct {
+	RefreshInterval time.Duration
+	CacheTTL        time.Duration
+	MaxDepth        int
+	LocalCacheSize  int
+	Kubernetes      K8sTopologyConfig
+}
+
+type K8sTopologyConfig struct {
+	Enabled    bool
+	MasterURL  string
+	Kubeconfig string
+	Namespaces []string
 }
 
 type RedisConfig struct {
@@ -57,6 +73,13 @@ type DatabaseConfig struct {
 }
 
 func (c DatabaseConfig) DSN() string {
+	sslmode := "disable"
+	if c.Driver == "postgres" || c.Driver == "postgresql" {
+		return fmt.Sprintf(
+			"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s search_path=obs_platform",
+			c.Host, c.Port, c.User, c.Password, c.Database, sslmode,
+		)
+	}
 	return fmt.Sprintf(
 		"%s:%s@tcp(%s:%d)/%s?charset=%s&parseTime=True&loc=Local",
 		c.User, c.Password, c.Host, c.Port, c.Database, c.Charset,
@@ -171,6 +194,18 @@ func LoadWithPath(configPath string) (*Config, error) {
 			Addr:     globalViper.GetString("redis.addr"),
 			Password: globalViper.GetString("redis.password"),
 			DB:       globalViper.GetInt("redis.db"),
+		},
+		Topology: TopologyConfig{
+			RefreshInterval: globalViper.GetDuration("topology.refresh_interval"),
+			CacheTTL:        globalViper.GetDuration("topology.cache_ttl"),
+			MaxDepth:        globalViper.GetInt("topology.max_depth"),
+			LocalCacheSize:  globalViper.GetInt("topology.local_cache_size"),
+			Kubernetes: K8sTopologyConfig{
+				Enabled:    globalViper.GetBool("topology.kubernetes.enabled"),
+				MasterURL:  globalViper.GetString("topology.kubernetes.master_url"),
+				Kubeconfig: globalViper.GetString("topology.kubernetes.kubeconfig"),
+				Namespaces: globalViper.GetStringSlice("topology.kubernetes.namespaces"),
+			},
 		},
 	}
 

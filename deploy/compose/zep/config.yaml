@@ -1,0 +1,20 @@
+store:
+  type: postgres
+  postgres:
+    dsn: "postgres://obs:obs@postgres:5432/obs_platform?sslmode=disable"
+
+graph:
+  type: neo4j
+  url: "bolt://neo4j:7687"
+  username: neo4j
+  password: obs_neo4j_password
+
+search:
+  type: opensearch
+  url: "http://opensearch:9200"
+
+server:
+  port: 8000
+
+log:
+  level: info

@@ -1,5 +1,5 @@
 # Build from repository root: docker build -f demo-apps/checkout-sim/Dockerfile .
-FROM golang:1.24-alpine AS build
+FROM golang:1.25-alpine AS build
 WORKDIR /src
 ENV CGO_ENABLED=0
 ENV GOTOOLCHAIN=auto
