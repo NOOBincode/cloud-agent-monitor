@@ -563,3 +563,62 @@ func TestPathHop(t *testing.T) {
 	assert.Equal(t, "production", hop.Namespace)
 	assert.Equal(t, 50.5, hop.Latency)
 }
+
+func TestServiceImportance_Weight(t *testing.T) {
+	tests := []struct {
+		name       string
+		importance ServiceImportance
+		want       float64
+	}{
+		{name: "critical", importance: ImportanceCritical, want: 1.0},
+		{name: "important", importance: ImportanceImportant, want: 0.75},
+		{name: "normal", importance: ImportanceNormal, want: 0.5},
+		{name: "edge", importance: ImportanceEdge, want: 0.25},
+		{name: "unknown", importance: ServiceImportance("unknown"), want: 0.5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.importance.Weight())
+		})
+	}
+}
+
+func TestServiceNode_GetEffectiveWeight(t *testing.T) {
+	tests := []struct {
+		name   string
+		node   ServiceNode
+		want   float64
+	}{
+		{name: "custom weight takes priority", node: ServiceNode{Weight: 0.9, Importance: ImportanceNormal}, want: 0.9},
+		{name: "falls back to importance weight", node: ServiceNode{Weight: 0, Importance: ImportanceCritical}, want: 1.0},
+		{name: "zero weight falls back", node: ServiceNode{Weight: 0, Importance: ImportanceEdge}, want: 0.25},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.node.GetEffectiveWeight())
+		})
+	}
+}
+
+func TestCallEdge_CalculateEdgeWeight(t *testing.T) {
+	tests := []struct {
+		name string
+		edge CallEdge
+		want float64
+	}{
+		{name: "http low latency no errors", edge: CallEdge{EdgeType: EdgeTypeHTTP, LatencyP99: 0, ErrorRate: 0}, want: 1.0},
+		{name: "grpc with latency and errors", edge: CallEdge{EdgeType: EdgeTypeGRPC, LatencyP99: 500, ErrorRate: 0.1}, want: (1.0 + 0.5) * (1.0 + 0.1) * 1.0},
+		{name: "database high latency", edge: CallEdge{EdgeType: EdgeTypeDatabase, LatencyP99: 1000, ErrorRate: 0}, want: 2.0 * 1.0 * 1.2},
+		{name: "cache type factor", edge: CallEdge{EdgeType: EdgeTypeCache, LatencyP99: 0, ErrorRate: 0}, want: 1.0 * 1.0 * 0.8},
+		{name: "mq type factor", edge: CallEdge{EdgeType: EdgeTypeMessageQueue, LatencyP99: 0, ErrorRate: 0}, want: 1.0 * 1.0 * 1.1},
+		{name: "indirect high uncertainty", edge: CallEdge{EdgeType: EdgeTypeIndirect, LatencyP99: 2000, ErrorRate: 0.3}, want: 3.0 * 1.3 * 1.5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.InDelta(t, tt.want, tt.edge.CalculateEdgeWeight(), 0.01)
+		})
+	}
+}

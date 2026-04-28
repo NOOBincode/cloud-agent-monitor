@@ -73,7 +73,7 @@ vet:
 
 wire:
 	@echo "Generating wire dependencies..."
-	@wire ./cmd/platform-api/...
+	@go generate ./cmd/platform-api/...
 	@echo "Wire generation complete!"
 
 deps:

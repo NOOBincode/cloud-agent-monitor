@@ -209,15 +209,3 @@ func GenerateResetToken() (string, error) {
 func SecureCompare(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
-
-func GenerateAPIKey() (string, string, error) {
-	keyBytes := make([]byte, 32)
-	if _, err := rand.Read(keyBytes); err != nil {
-		return "", "", fmt.Errorf("generate api key: %w", err)
-	}
-
-	key := APIKeyPrefix + base64.URLEncoding.EncodeToString(keyBytes)
-	prefix := key[:7] + "..."
-
-	return key, prefix, nil
-}

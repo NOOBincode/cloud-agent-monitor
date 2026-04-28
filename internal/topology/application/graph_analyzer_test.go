@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"context"
 	"testing"
+	"time"
 
 	"cloud-agent-monitor/internal/topology/domain"
 
@@ -600,4 +601,97 @@ func TestPriorityQueue(t *testing.T) {
 
 	popped = heap.Pop(&pq).(*Path)
 	assert.Equal(t, 15.0, popped.Cost)
+}
+
+func TestGraphAnalyzer_AnalyzeImpactWeighted(t *testing.T) {
+	t.Run("returns error when graph is nil", func(t *testing.T) {
+		analyzer := NewGraphAnalyzer(nil)
+		_, err := analyzer.AnalyzeImpactWeighted(context.Background(), uuid.New(), 5)
+		assert.ErrorIs(t, err, domain.ErrGraphNotReady)
+	})
+
+	t.Run("returns error when node not found", func(t *testing.T) {
+		graph := NewInMemoryGraph()
+		analyzer := NewGraphAnalyzer(graph)
+		_, err := analyzer.AnalyzeImpactWeighted(context.Background(), uuid.New(), 5)
+		assert.ErrorIs(t, err, domain.ErrNodeNotFound)
+	})
+
+	t.Run("calculates weighted impact with importance", func(t *testing.T) {
+		graph := NewInMemoryGraph()
+		rootID := uuid.New()
+		upID := uuid.New()
+		downID := uuid.New()
+
+		graph.Rebuild(
+			[]*domain.ServiceNode{
+				{ID: rootID, Name: "root", Namespace: "default", Importance: domain.ImportanceCritical},
+				{ID: upID, Name: "upstream", Namespace: "default", Importance: domain.ImportanceImportant},
+				{ID: downID, Name: "downstream", Namespace: "default", Importance: domain.ImportanceNormal},
+			},
+			[]*domain.CallEdge{
+				{ID: uuid.New(), SourceID: upID, TargetID: rootID},
+				{ID: uuid.New(), SourceID: rootID, TargetID: downID},
+			},
+		)
+
+		analyzer := NewGraphAnalyzer(graph)
+		result, err := analyzer.AnalyzeImpactWeighted(context.Background(), rootID, 5)
+		require.NoError(t, err)
+
+		assert.True(t, result.WeightedScore > 0)
+		assert.Equal(t, 2, result.TotalAffected)
+		assert.Contains(t, result.ImpactByImportance, domain.ImportanceImportant)
+		assert.Contains(t, result.ImpactByImportance, domain.ImportanceNormal)
+		assert.True(t, len(result.CriticalServices) >= 1)
+	})
+}
+
+func TestGraphAnalyzer_DetectBottlenecks(t *testing.T) {
+	t.Run("returns error when graph is nil", func(t *testing.T) {
+		analyzer := NewGraphAnalyzer(nil)
+		_, err := analyzer.DetectBottlenecks(context.Background())
+		assert.ErrorIs(t, err, domain.ErrGraphNotReady)
+	})
+
+	t.Run("detects bottleneck nodes", func(t *testing.T) {
+		graph := NewInMemoryGraph()
+		bottleneckID := uuid.New()
+		normalID := uuid.New()
+
+		graph.Rebuild(
+			[]*domain.ServiceNode{
+				{ID: bottleneckID, Name: "bottleneck", Namespace: "default", Importance: domain.ImportanceCritical, ErrorRate: 0.5, LatencyP99: 2000},
+				{ID: normalID, Name: "normal", Namespace: "default", Importance: domain.ImportanceEdge, ErrorRate: 0, LatencyP99: 10},
+			},
+			[]*domain.CallEdge{
+				{ID: uuid.New(), SourceID: normalID, TargetID: bottleneckID},
+			},
+		)
+
+		analyzer := NewGraphAnalyzer(graph)
+		bottlenecks, err := analyzer.DetectBottlenecks(context.Background())
+		require.NoError(t, err)
+
+		assert.True(t, len(bottlenecks) > 0, "should detect bottleneck nodes")
+	})
+}
+
+func TestGraphAnalyzer_TimeDependentWeight(t *testing.T) {
+	tdw := &TimeDependentWeight{
+		BaseWeight:  1.0,
+		TimeFactors: map[time.Weekday]map[int]float64{
+			time.Monday: {9: 1.5, 18: 0.8},
+		},
+	}
+
+	t.Run("returns base weight when no factor configured", func(t *testing.T) {
+		w := tdw.GetWeight(time.Date(2026, 1, 3, 12, 0, 0, 0, time.UTC))
+		assert.Equal(t, 1.0, w)
+	})
+
+	t.Run("returns adjusted weight with factor", func(t *testing.T) {
+		w := tdw.GetWeight(time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC))
+		assert.Equal(t, 1.5, w)
+	})
 }

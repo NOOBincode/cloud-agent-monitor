@@ -49,13 +49,13 @@ flowchart TB
     subgraph data [数据面]
         Prom[Prometheus]
         Loki[Loki]
-        MySQL[(MySQL)]
+        PG[(PostgreSQL)]
     end
-    
+
     GPU --> Prom
     Inference --> Prom
     LLM --> Prom
-    LLM --> MySQL
+    LLM --> PG
     Queue --> Prom
     
     Catalog --> GPU
@@ -77,7 +77,7 @@ flowchart TB
 
 ### 2.1 数据模型设计
 
-当前已实现的数据库 Schema（[002_ai_observability.up.sql](../internal/storage/migrations/mysql/002_ai_observability.up.sql)）：
+当前已实现的数据库 Schema（[002_ai_observability.up.sql](../internal/storage/migrations/postgresql/002_ai_observability.up.sql)）：
 
 ```mermaid
 erDiagram
@@ -166,7 +166,7 @@ internal/aiinfra/
 **分层职责**：
 - **Domain**：定义 AI 观测的核心概念（Session、ToolCall、Model）和语义约定
 - **Application**：编排用例，如 Session 创建、Token 计费、成本统计
-- **Infrastructure**：对接 Prometheus（指标）、MySQL（元数据）、OpenTelemetry（追踪）
+- **Infrastructure**：对接 Prometheus（指标）、PostgreSQL（元数据）、OpenTelemetry（追踪）
 - **Interfaces**：暴露 HTTP API 供外部查询
 
 ### 2.3 已规划的能力

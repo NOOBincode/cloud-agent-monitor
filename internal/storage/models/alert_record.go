@@ -3,6 +3,8 @@ package models
 import (
 	"time"
 
+	alertDomain "cloud-agent-monitor/internal/alerting/domain"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -14,12 +16,13 @@ const (
 	AlertStatusResolved AlertStatus = "resolved"
 )
 
-type AlertSeverity string
+// AlertSeverity aliases alerting/domain.Severity to avoid duplicate definition.
+type AlertSeverity = alertDomain.Severity
 
 const (
-	AlertSeverityCritical AlertSeverity = "critical"
-	AlertSeverityWarning  AlertSeverity = "warning"
-	AlertSeverityInfo     AlertSeverity = "info"
+	AlertSeverityCritical AlertSeverity = alertDomain.SeverityCritical
+	AlertSeverityWarning  AlertSeverity = alertDomain.SeverityWarning
+	AlertSeverityInfo     AlertSeverity = alertDomain.SeverityInfo
 )
 
 type AlertRecord struct {

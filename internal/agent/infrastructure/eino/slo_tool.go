@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	agentDomain "cloud-agent-monitor/internal/agent/domain"
 	"cloud-agent-monitor/internal/slo/domain"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -12,10 +13,13 @@ import (
 	"github.com/google/uuid"
 )
 
+// SLOTool is the fat tool for SLO queries. It dispatches by action to the SLOServiceInterface.
+// Supported actions: list, get, error_budget, burn_rate_alerts, summary.
 type SLOTool struct {
 	service domain.SLOServiceInterface
 }
 
+// NewSLOTool creates a new SLOTool fat tool backed by the given service.
 func NewSLOTool(service domain.SLOServiceInterface) *SLOTool {
 	return &SLOTool{service: service}
 }
@@ -248,4 +252,152 @@ func (t *SLOTool) IsReadOnly() bool {
 
 func (t *SLOTool) RequiredPermission() string {
 	return "slo:read"
+}
+
+type SLOListTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewSLOListTool(fat *SLOTool) *SLOListTool {
+	return &SLOListTool{delegate: NewFatToolDelegator(fat, "list")}
+}
+func (t *SLOListTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: "slo_list",
+		Desc: "List all SLOs with optional filtering by service and status.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"service_id": {Type: schema.String, Desc: "Filter by service ID"},
+			"status":     {Type: schema.String, Desc: "Filter by status", Enum: []string{"healthy", "warning", "critical", "unknown"}},
+		}),
+	}, nil
+}
+func (t *SLOListTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *SLOListTool) IsReadOnly() bool           { return true }
+func (t *SLOListTool) RequiredPermission() string { return "slo:read" }
+
+type SLOGetTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewSLOGetTool(fat *SLOTool) *SLOGetTool {
+	return &SLOGetTool{delegate: NewFatToolDelegator(fat, "get")}
+}
+func (t *SLOGetTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: "slo_get",
+		Desc: "Get detailed SLO information by ID, including SLI configuration and error budget.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"slo_id": {Type: schema.String, Desc: "SLO ID (required)"},
+		}),
+	}, nil
+}
+func (t *SLOGetTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *SLOGetTool) IsReadOnly() bool           { return true }
+func (t *SLOGetTool) RequiredPermission() string { return "slo:read" }
+
+type SLOGetErrorBudgetTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewSLOGetErrorBudgetTool(fat *SLOTool) *SLOGetErrorBudgetTool {
+	return &SLOGetErrorBudgetTool{delegate: NewFatToolDelegator(fat, "error_budget")}
+}
+func (t *SLOGetErrorBudgetTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: "slo_get_error_budget",
+		Desc: "Get error budget details for a specific SLO — remaining, consumed, and percentage.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"slo_id": {Type: schema.String, Desc: "SLO ID (required)"},
+		}),
+	}, nil
+}
+func (t *SLOGetErrorBudgetTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *SLOGetErrorBudgetTool) IsReadOnly() bool           { return true }
+func (t *SLOGetErrorBudgetTool) RequiredPermission() string { return "slo:read" }
+
+type SLOGetBurnRateAlertsTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewSLOGetBurnRateAlertsTool(fat *SLOTool) *SLOGetBurnRateAlertsTool {
+	return &SLOGetBurnRateAlertsTool{delegate: NewFatToolDelegator(fat, "burn_rate_alerts")}
+}
+func (t *SLOGetBurnRateAlertsTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name:        "slo_get_burn_rate_alerts",
+		Desc:        "Get current burn rate alerts — SLOs burning through error budget too fast.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{}),
+	}, nil
+}
+func (t *SLOGetBurnRateAlertsTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *SLOGetBurnRateAlertsTool) IsReadOnly() bool           { return true }
+func (t *SLOGetBurnRateAlertsTool) RequiredPermission() string { return "slo:read" }
+
+type SLOGetSummaryTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewSLOGetSummaryTool(fat *SLOTool) *SLOGetSummaryTool {
+	return &SLOGetSummaryTool{delegate: NewFatToolDelegator(fat, "summary")}
+}
+func (t *SLOGetSummaryTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name:        "slo_get_summary",
+		Desc:        "Get SLO summary statistics — counts by status, average burn rate, breakdown by service.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{}),
+	}, nil
+}
+func (t *SLOGetSummaryTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *SLOGetSummaryTool) IsReadOnly() bool           { return true }
+func (t *SLOGetSummaryTool) RequiredPermission() string { return "slo:read" }
+
+// SLOToolProvider implements domain.ToolProvider for the SLO category.
+// It creates 5 thin tools (list, get, error_budget, burn_rate_alerts, summary)
+// that delegate to a single SLOTool fat tool.
+type SLOToolProvider struct {
+	service domain.SLOServiceInterface
+}
+
+// NewSLOToolProvider creates a new SLO provider backed by the given service.
+func NewSLOToolProvider(svc domain.SLOServiceInterface) *SLOToolProvider {
+	return &SLOToolProvider{service: svc}
+}
+
+func (p *SLOToolProvider) Category() agentDomain.ToolCategory {
+	return agentDomain.CategorySLO
+}
+
+func (p *SLOToolProvider) Tools(ctx context.Context) ([]agentDomain.ToolSpec, error) {
+	return []agentDomain.ToolSpec{
+		{Name: "slo_list", Description: "List all SLOs", RequiredPermission: "slo:read", IsReadOnly: true, Category: agentDomain.CategorySLO},
+		{Name: "slo_get", Description: "Get SLO details by ID", RequiredPermission: "slo:read", IsReadOnly: true, Category: agentDomain.CategorySLO},
+		{Name: "slo_get_error_budget", Description: "Get error budget for an SLO", RequiredPermission: "slo:read", IsReadOnly: true, Category: agentDomain.CategorySLO},
+		{Name: "slo_get_burn_rate_alerts", Description: "Get burn rate alerts", RequiredPermission: "slo:read", IsReadOnly: true, Category: agentDomain.CategorySLO},
+		{Name: "slo_get_summary", Description: "Get SLO summary statistics", RequiredPermission: "slo:read", IsReadOnly: true, Category: agentDomain.CategorySLO},
+	}, nil
+}
+
+func (p *SLOToolProvider) DefaultPools() []*agentDomain.ToolPool {
+	return []*agentDomain.ToolPool{}
+}
+
+func (p *SLOToolProvider) CreateTools() []ReadOnlyTool {
+	fat := NewSLOTool(p.service)
+	return []ReadOnlyTool{
+		NewSLOListTool(fat),
+		NewSLOGetTool(fat),
+		NewSLOGetErrorBudgetTool(fat),
+		NewSLOGetBurnRateAlertsTool(fat),
+		NewSLOGetSummaryTool(fat),
+	}
 }

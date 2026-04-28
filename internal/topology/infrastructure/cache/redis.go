@@ -3,10 +3,13 @@ package cache
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"cloud-agent-monitor/internal/topology/domain"
+	topootel "cloud-agent-monitor/internal/topology/infrastructure/otel"
+	"cloud-agent-monitor/internal/topology/infrastructure/resilience"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -365,90 +368,81 @@ func (c *RedisCache) BatchSetImpactCache(ctx context.Context, results map[uuid.U
 // - 超时控制
 type ResilientRedisCache struct {
 	*RedisCache
-	// TODO: 添加重试和熔断器配置
-	// retryConfig    resilience.RetryConfig
-	// circuitBreaker *resilience.CircuitBreaker
-	// timeout        time.Duration
+	retryConfig    resilience.RetryConfig
+	circuitBreaker *resilience.CircuitBreaker
+	timeout        time.Duration
 }
 
-// NewResilientRedisCache 创建带重试机制的 Redis 缓存
-//
-// TODO: 实现创建函数
 func NewResilientRedisCache(client *redis.Client, maxRetries int, timeout time.Duration) *ResilientRedisCache {
-	// TODO: 实现创建函数
-	// 骨架代码：
-	// return &ResilientRedisCache{
-	//     RedisCache:  NewRedisCache(client),
-	//     retryConfig: resilience.RetryConfig{
-	//         MaxAttempts:  maxRetries,
-	//         InitialDelay: 100 * time.Millisecond,
-	//         MaxDelay:     5 * time.Second,
-	//         Multiplier:   2.0,
-	//         Jitter:       true,
-	//     },
-	//     circuitBreaker: resilience.NewCircuitBreaker(5, 30*time.Second),
-	//     timeout:        timeout,
-	// }
-	return &ResilientRedisCache{RedisCache: NewRedisCache(client)}
+	rc := &ResilientRedisCache{
+		RedisCache: NewRedisCache(client),
+		retryConfig: resilience.RetryConfig{
+			MaxAttempts:  maxRetries,
+			InitialDelay: 100 * time.Millisecond,
+			MaxDelay:     5 * time.Second,
+			Multiplier:   2.0,
+			Jitter:       true,
+			OnRetry: func(ctx context.Context, attempt int, err error) {
+				result := "error"
+				if errors.Is(err, domain.ErrCacheMiss) {
+					result = "cache_miss"
+				}
+				topootel.RecordRetryAttempt(ctx, "cache", result, attempt)
+				topootel.RecordCacheOperation(ctx, "retry", result, float64(attempt)*100)
+			},
+		},
+		circuitBreaker: resilience.NewCircuitBreaker(5, 30*time.Second),
+		timeout:        timeout,
+	}
+	rc.circuitBreaker.OnStateChange = func(from, to resilience.CircuitState) {
+		topootel.RecordCBStateChange(context.Background(), from.String(), to.String())
+	}
+	return rc
 }
 
-// GetServiceTopologyWithRetry 带重试的服务拓扑获取
-//
-// TODO: 实现带重试的获取逻辑
-// 提示：
-// 1. 使用 resilience.Retry 包装原始方法
-// 2. 设置合理的超时时间
-// 3. 只对网络错误重试，不缓存穿透错误
 func (c *ResilientRedisCache) GetServiceTopologyWithRetry(ctx context.Context) (*domain.ServiceTopology, error) {
-	// TODO: 实现带重试的获取逻辑
-	// 骨架代码：
-	// ctx, cancel := context.WithTimeout(ctx, c.timeout)
-	// defer cancel()
-	//
-	// var result *domain.ServiceTopology
-	// err := resilience.Retry(ctx, c.retryConfig, func() error {
-	//     var err error
-	//     result, err = c.RedisCache.GetServiceTopology(ctx)
-	//     return err
-	// }, func(err error) bool {
-	//     // 只对网络错误重试
-	//     return !errors.Is(err, domain.ErrCacheMiss)
-	// })
-	//
-	// return result, err
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
 
-	return c.RedisCache.GetServiceTopology(ctx)
+	var result *domain.ServiceTopology
+	err := resilience.Retry(ctx, c.retryConfig, func() error {
+		var err error
+		result, err = c.RedisCache.GetServiceTopology(ctx)
+		return err
+	}, func(err error) bool {
+		return !errors.Is(err, domain.ErrCacheMiss)
+	})
+
+	return result, err
 }
 
-// SetServiceTopologyWithRetry 带重试的服务拓扑设置
-//
-// TODO: 实现带重试的设置逻辑
 func (c *ResilientRedisCache) SetServiceTopologyWithRetry(ctx context.Context, topology *domain.ServiceTopology, ttl time.Duration) error {
-	// TODO: 实现带重试的设置逻辑
-	// 参考 GetServiceTopologyWithRetry 实现
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
 
-	return c.RedisCache.SetServiceTopology(ctx, topology, ttl)
+	return resilience.Retry(ctx, c.retryConfig, func() error {
+		return c.RedisCache.SetServiceTopology(ctx, topology, ttl)
+	}, resilience.DefaultIsRetryable)
 }
 
-// GetNodeWithRetry 带重试的节点获取
-//
-// TODO: 实现带重试的节点获取
 func (c *ResilientRedisCache) GetNodeWithRetry(ctx context.Context, id uuid.UUID) (*domain.ServiceNode, error) {
-	// TODO: 实现带重试的节点获取
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
 
-	return c.RedisCache.GetNode(ctx, id)
+	var result *domain.ServiceNode
+	err := resilience.Retry(ctx, c.retryConfig, func() error {
+		var err error
+		result, err = c.RedisCache.GetNode(ctx, id)
+		return err
+	}, func(err error) bool {
+		return !errors.Is(err, domain.ErrCacheMiss)
+	})
+
+	return result, err
 }
 
-// IsHealthy 检查缓存健康状态
-//
-// TODO: 实现健康检查
-// 提示：使用 Redis PING 命令检查连接
 func (c *ResilientRedisCache) IsHealthy(ctx context.Context) bool {
-	// TODO: 实现健康检查
-	// 骨架代码：
-	// ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	// defer cancel()
-	// return c.client.Ping(ctx).Err() == nil
-
-	return true
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	return c.RedisCache.client.Ping(ctx).Err() == nil
 }

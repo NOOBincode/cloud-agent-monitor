@@ -25,7 +25,7 @@
 | **权限继承** | ✅ 支持 | ❌ 不支持 | 角色层级继承 |
 | **多租户** | ✅ 内置 | ⚠️ 仅预留 | Casbin 原生支持域（租户） |
 | **性能优化** | ✅ 内置缓存 | ❌ 无 | 减少数据库查询 |
-| **策略存储** | 多种 Adapter | 仅 MySQL | 支持 File, DB, Redis 等 |
+| **策略存储** | 多种 Adapter | 仅 PostgreSQL | 支持 File, DB, Redis 等 |
 | **生产验证** | ✅ 大量案例 | ❌ 无 | Alibaba, Google 等使用 |
 | **维护成本** | ✅ 社区维护 | ❌ 自己维护 | 17k+ GitHub Stars |
 | **策略管理** | ✅ 管理界面 | ❌ 无 | Casbin Dashboard |
@@ -73,7 +73,7 @@
 ┌─────────────────────────────────────────┐
 │           Storage Layer                 │
 │  ┌──────────┐  ┌──────────┐  ┌───────┐ │
-│  │  MySQL   │  │  Redis   │  │ Memory│ │
+│  │PostgreSQL│  │  Redis   │  │ Memory│ │
 │  │ (Policy) │  │ (Cache)  │  │ (Test)│ │
 │  └──────────┘  └──────────┘  └───────┘ │
 └─────────────────────────────────────────┘
@@ -104,7 +104,7 @@
 # 安装 Casbin Core
 go get github.com/casbin/casbin/v2
 
-# 安装 GORM Adapter（用于 MySQL 存储）
+# 安装 GORM Adapter（用于 PostgreSQL 存储）
 go get github.com/casbin/gorm-adapter/v2
 
 # 安装 Redis Watcher（用于分布式通知）
@@ -730,7 +730,7 @@ func (s *PolicyService) auditPolicyChange(
 
 ```bash
 # 导出现有用户角色关系
-mysqldump -u root -p obs_platform users roles user_roles > backup_auth.sql
+pg_dump -U obs -d obs_platform -t users -t roles -t user_roles > backup_auth.sql
 ```
 
 #### 步骤 2：安装 Casbin

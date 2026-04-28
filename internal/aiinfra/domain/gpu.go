@@ -3,6 +3,8 @@ package domain
 import (
 	"context"
 	"time"
+
+	alertDomain "cloud-agent-monitor/internal/alerting/domain"
 )
 
 type GPUNodeStatus string
@@ -78,7 +80,7 @@ type GPUAlert struct {
 	GPUNodeID string
 
 	AlertType  AlertType
-	Severity   AlertSeverity
+	Severity   alertDomain.Severity
 	AlertName  string
 	Message    string
 

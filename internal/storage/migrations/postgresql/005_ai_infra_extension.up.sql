@@ -49,6 +49,7 @@ CREATE TABLE obs_platform.gpu_metrics (
     memory_utilization DECIMAL(5,2),
     memory_used_mb INTEGER,
     memory_free_mb INTEGER,
+    memory_total_mb INTEGER,
     
     power_usage_w DECIMAL(6,2),
     power_draw_w DECIMAL(6,2),
@@ -146,6 +147,7 @@ CREATE TABLE obs_platform.inference_requests (
     
     request_id VARCHAR(255),
     model_name VARCHAR(255),
+    gen_ai_system VARCHAR(50),
     
     ttft_ms INTEGER,
     tpot_ms INTEGER,
@@ -181,6 +183,8 @@ CREATE INDEX idx_inference_requests_service ON obs_platform.inference_requests(i
 CREATE INDEX idx_inference_requests_trace ON obs_platform.inference_requests(trace_id);
 CREATE INDEX idx_inference_requests_started ON obs_platform.inference_requests(started_at DESC);
 CREATE INDEX idx_inference_requests_status ON obs_platform.inference_requests(status);
+
+COMMENT ON COLUMN obs_platform.inference_requests.gen_ai_system IS 'OTel: gen_ai.system (vllm, triton, tgi, openai-compatible)';
 
 -- Model versions management
 CREATE TABLE obs_platform.model_versions (

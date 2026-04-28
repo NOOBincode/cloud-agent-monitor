@@ -29,7 +29,7 @@ Cloud Agent Monitor 是一个面向云原生环境的全栈监控解决方案，
 ├─────────────────────────────────────────────────────────────────┤
 │  Domain Layer: Alert │ SLO │ AIInfra │ Advisor │ Agent │ Policy │
 ├─────────────────────────────────────────────────────────────────┤
-│  Infrastructure: MySQL │ Redis │ Prometheus │ Alertmanager │ K8s │
+│  Infrastructure: PostgreSQL │ Redis │ Prometheus │ Alertmanager │ K8s │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -46,7 +46,7 @@ Cloud Agent Monitor 是一个面向云原生环境的全栈监控解决方案，
 | 可观测性 | Prometheus, Alertmanager, Jaeger, Tempo |
 | AI框架 | CloudWeGo Eino |
 | 权限控制 | Casbin |
-| 数据库 | MySQL / SQLite |
+| 数据库 | PostgreSQL 17 |
 | 缓存 | Redis, FreeCache |
 
 ## 项目结构
@@ -89,7 +89,7 @@ cloud-agent-monitor/
 ### 环境要求
 
 - Go 1.25+
-- MySQL 8.0+ 或 SQLite
+- PostgreSQL 17+
 - Redis 6.0+
 - Prometheus + Alertmanager (可选)
 
@@ -121,8 +121,8 @@ server:
   addr: ":8080"
 
 database:
-  driver: "mysql"
-  dsn: "user:password@tcp(localhost:3306)/cloud_monitor?charset=utf8mb4&parseTime=True&loc=Local"
+  driver: "postgres"
+  dsn: "postgres://user:password@localhost:5432/cloud_monitor?sslmode=disable"
 
 redis:
   addr: "localhost:6379"

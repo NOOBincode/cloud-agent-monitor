@@ -20,6 +20,9 @@ import (
 	"cloud-agent-monitor/internal/alerting/application"
 	"cloud-agent-monitor/internal/alerting/infrastructure"
 	alerthttp "cloud-agent-monitor/internal/alerting/interfaces/http"
+	agentauth "cloud-agent-monitor/internal/agent/infrastructure/auth"
+	agenthttp "cloud-agent-monitor/internal/agent/interfaces/http"
+	eino "cloud-agent-monitor/internal/agent/infrastructure/eino"
 	"cloud-agent-monitor/internal/auth"
 	"cloud-agent-monitor/internal/platform"
 	"cloud-agent-monitor/internal/promclient"
@@ -31,6 +34,7 @@ import (
 	topodomain "cloud-agent-monitor/internal/topology/domain"
 	topocache "cloud-agent-monitor/internal/topology/infrastructure/cache"
 	topok8s "cloud-agent-monitor/internal/topology/infrastructure/kubernetes"
+	topootel "cloud-agent-monitor/internal/topology/infrastructure/otel"
 	topoprom "cloud-agent-monitor/internal/topology/infrastructure/prometheus"
 	topostorage "cloud-agent-monitor/internal/topology/infrastructure/storage"
 	topohttp "cloud-agent-monitor/internal/topology/interfaces/http"
@@ -77,9 +81,18 @@ func InitializeApp() (*App, error) {
 		ProvideTopologyCache,
 		ProvidePrometheusTopologyBackend,
 		ProvideTopologyDiscoverers,
+		ProvideTopologyMetricsCollector,
 		ProvideTopologyService,
 		ProvideImpactCacheService,
 		ProvideTopologyHandler,
+		ProvideAgentSessionStore,
+		ProvideAgentPermissionChecker,
+		ProvideAgentToolRegistry,
+		ProvideAgentPoolRegistry,
+		ProvideAgentAlertingProvider,
+		ProvideAgentSLOProvider,
+		ProvideAgentTopologyProvider,
+		ProvideAgentHandler,
 		ProvideHTTPServer,
 		ProvideApp,
 	)
@@ -332,12 +345,17 @@ func ProvideTopologyService(
 	localCache *infra.Cache,
 	queue *infra.Queue,
 	cfg *config.Config,
+	otelMC *topootel.MetricsCollector,
 ) *topoapp.TopologyService {
 	return topoapp.NewTopologyService(repo, cache, discoverers, localCache, queue, &topoapp.Config{
 		RefreshInterval: cfg.Topology.RefreshInterval,
 		CacheTTL:        cfg.Topology.CacheTTL,
 		MaxDepth:        cfg.Topology.MaxDepth,
-	})
+	}, otelMC)
+}
+
+func ProvideTopologyMetricsCollector() (*topootel.MetricsCollector, error) {
+	return topootel.NewMetricsCollector()
 }
 
 func ProvideImpactCacheService(
@@ -352,6 +370,38 @@ func ProvideTopologyHandler(service *topoapp.TopologyService) *topohttp.Handler 
 	return topohttp.NewHandler(service)
 }
 
+func ProvideAgentSessionStore() *agentauth.InMemorySessionStore {
+	return agentauth.NewInMemorySessionStore()
+}
+
+func ProvideAgentPermissionChecker(store *agentauth.InMemorySessionStore) *agentauth.PermissionChecker {
+	return agentauth.NewPermissionChecker(store)
+}
+
+func ProvideAgentToolRegistry(checker *agentauth.PermissionChecker) *eino.ToolRegistry {
+	return eino.SetupToolRegistry(checker)
+}
+
+func ProvideAgentPoolRegistry(toolRegistry *eino.ToolRegistry, alertProvider *eino.AlertingToolProvider, sloProvider *eino.SLOToolProvider, topoProvider *eino.TopologyToolProvider) *eino.PoolRegistry {
+	return eino.SetupPoolRegistry(toolRegistry, alertProvider, sloProvider, topoProvider)
+}
+
+func ProvideAgentAlertingProvider(alertService *application.AlertService) *eino.AlertingToolProvider {
+	return eino.NewAlertingToolProvider(alertService)
+}
+
+func ProvideAgentSLOProvider(sloService *sloapp.SLOService) *eino.SLOToolProvider {
+	return eino.NewSLOToolProvider(sloService)
+}
+
+func ProvideAgentTopologyProvider(topoService *topoapp.TopologyService) *eino.TopologyToolProvider {
+	return eino.NewTopologyToolProvider(topoService)
+}
+
+func ProvideAgentHandler(toolRegistry *eino.ToolRegistry, poolRegistry *eino.PoolRegistry) *agenthttp.Handler {
+	return agenthttp.NewHandler(toolRegistry, poolRegistry)
+}
+
 func ProvideHTTPServer(
 	db *gorm.DB,
 	repo storage.ServiceRepositoryInterface,
@@ -363,6 +413,7 @@ func ProvideHTTPServer(
 	alertHandler *alerthttp.Handler,
 	sloHandler *slohttp.Handler,
 	topologyHandler *topohttp.Handler,
+	agentHandler *agenthttp.Handler,
 	roleRepo storage.RoleRepositoryInterface,
 ) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
@@ -404,6 +455,7 @@ func ProvideHTTPServer(
 	alerthttp.RegisterRoutes(protected, alertHandler)
 	slohttp.RegisterRoutes(protected, sloHandler)
 	topohttp.RegisterRoutes(protected, topologyHandler)
+	agenthttp.RegisterRoutes(protected, agentHandler)
 
 	healthCheckService.Start()
 
@@ -464,9 +516,18 @@ var ProviderSet = wire.NewSet(
 	ProvideTopologyCache,
 	ProvidePrometheusTopologyBackend,
 	ProvideTopologyDiscoverers,
+	ProvideTopologyMetricsCollector,
 	ProvideTopologyService,
 	ProvideImpactCacheService,
 	ProvideTopologyHandler,
+	ProvideAgentSessionStore,
+	ProvideAgentPermissionChecker,
+	ProvideAgentToolRegistry,
+	ProvideAgentPoolRegistry,
+	ProvideAgentAlertingProvider,
+	ProvideAgentSLOProvider,
+	ProvideAgentTopologyProvider,
+	ProvideAgentHandler,
 	ProvideHTTPServer,
 	ProvideApp,
 )

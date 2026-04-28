@@ -96,30 +96,19 @@ const (
 	ImportanceEdge ServiceImportance = "edge"
 )
 
-// ImportanceWeight 返回重要性对应的权重值
-//
-// TODO: 实现重要性权重映射
-// 提示：
-// - critical: 1.0 (最高权重)
-// - important: 0.75
-// - normal: 0.5
-// - edge: 0.25
 func (i ServiceImportance) Weight() float64 {
-	// TODO: 实现权重映射
-	// 骨架代码：
-	// switch i {
-	// case ImportanceCritical:
-	//     return 1.0
-	// case ImportanceImportant:
-	//     return 0.75
-	// case ImportanceNormal:
-	//     return 0.5
-	// case ImportanceEdge:
-	//     return 0.25
-	// default:
-	//     return 0.5
-	// }
-	return 0.5
+	switch i {
+	case ImportanceCritical:
+		return 1.0
+	case ImportanceImportant:
+		return 0.75
+	case ImportanceNormal:
+		return 0.5
+	case ImportanceEdge:
+		return 0.25
+	default:
+		return 0.5
+	}
 }
 
 // ServiceNode 表示服务拓扑中的一个节点。
@@ -479,56 +468,32 @@ func (q *TopologyQuery) GetDepth() int {
 	return q.Depth
 }
 
-// GetEffectiveWeight 获取服务节点的有效权重
-//
-// TODO: 实现有效权重计算
-// 优先级：Weight > Importance.Weight() > 默认值 0.5
-// 提示：
-// 1. 如果 n.Weight > 0，直接返回 n.Weight
-// 2. 否则返回 n.Importance.Weight()
 func (n *ServiceNode) GetEffectiveWeight() float64 {
-	// TODO: 实现有效权重计算
-	// 骨架代码：
-	// if n.Weight > 0 {
-	//     return n.Weight
-	// }
-	// return n.Importance.Weight()
-	return 0.5
+	if n.Weight > 0 {
+		return n.Weight
+	}
+	return n.Importance.Weight()
 }
 
-// CalculateEdgeWeight 计算边的权重
-//
-// TODO: 实现边权重计算
-// 权重公式：weight = latency_factor * error_factor * type_factor
-// 其中：
-// - latency_factor = 1 + (LatencyP99 / 1000) // 延迟越高权重越大
-// - error_factor = 1 + ErrorRate // 错误率越高权重越大
-// - type_factor 根据边类型确定：
-//   - HTTP/gRPC: 1.0 (正常)
-//   - Database: 1.2 (数据库调用代价更高)
-//   - Cache: 0.8 (缓存调用代价较低)
-//   - MQ: 1.1 (消息队列)
-//   - Indirect: 1.5 (间接推断，不确定性高)
 func (e *CallEdge) CalculateEdgeWeight() float64 {
-	// TODO: 实现边权重计算
-	// 骨架代码：
-	// latencyFactor := 1.0 + e.LatencyP99/1000.0
-	// errorFactor := 1.0 + e.ErrorRate
-	// typeFactor := 1.0
-	// switch e.EdgeType {
-	// case EdgeTypeHTTP, EdgeTypeGRPC:
-	//     typeFactor = 1.0
-	// case EdgeTypeDatabase:
-	//     typeFactor = 1.2
-	// case EdgeTypeCache:
-	//     typeFactor = 0.8
-	// case EdgeTypeMessageQueue:
-	//     typeFactor = 1.1
-	// case EdgeTypeIndirect:
-	//     typeFactor = 1.5
-	// }
-	// return latencyFactor * errorFactor * typeFactor
-	return 1.0
+	latencyFactor := 1.0 + e.LatencyP99/1000.0
+	errorFactor := 1.0 + e.ErrorRate
+
+	typeFactor := 1.0
+	switch e.EdgeType {
+	case EdgeTypeHTTP, EdgeTypeGRPC:
+		typeFactor = 1.0
+	case EdgeTypeDatabase:
+		typeFactor = 1.2
+	case EdgeTypeCache:
+		typeFactor = 0.8
+	case EdgeTypeMessageQueue:
+		typeFactor = 1.1
+	case EdgeTypeIndirect:
+		typeFactor = 1.5
+	}
+
+	return latencyFactor * errorFactor * typeFactor
 }
 
 // WeightedImpactResult 加权影响分析结果

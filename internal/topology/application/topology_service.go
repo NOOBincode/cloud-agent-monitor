@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"cloud-agent-monitor/internal/topology/domain"
+	topootel "cloud-agent-monitor/internal/topology/infrastructure/otel"
 	"cloud-agent-monitor/pkg/infra"
 
 	"github.com/google/uuid"
@@ -41,6 +42,7 @@ type TopologyService struct {
 	analyzer    *GraphAnalyzer
 	localCache  *infra.Cache
 	queue       infra.QueueInterface
+	otelMC      *topootel.MetricsCollector
 
 	serviceGraph *InMemoryGraph
 	networkGraph *InMemoryGraph
@@ -82,6 +84,7 @@ func NewTopologyService(
 	localCache *infra.Cache,
 	queue infra.QueueInterface,
 	cfg *Config,
+	otelMC *topootel.MetricsCollector,
 ) *TopologyService {
 	if cfg == nil {
 		cfg = &Config{
@@ -101,6 +104,7 @@ func NewTopologyService(
 		analyzer:        NewGraphAnalyzer(serviceGraph),
 		localCache:      localCache,
 		queue:           queue,
+		otelMC:          otelMC,
 		serviceGraph:    serviceGraph,
 		networkGraph:    networkGraph,
 		refreshInterval: cfg.RefreshInterval,
@@ -200,6 +204,10 @@ func (s *TopologyService) registerQueueHandlers() {
 //   - *ServiceTopology: 服务拓扑数据
 //   - error: 拓扑刷新失败时返回错误
 func (s *TopologyService) GetServiceTopology(ctx context.Context, query domain.TopologyQuery) (*domain.ServiceTopology, error) {
+	ctx, span := topootel.StartQuerySpan(ctx, "service_topology")
+	defer span.End()
+	start := time.Now()
+
 	if s.localCache != nil && !query.HasNamespace() && query.ServiceName == "" {
 		if data, err := s.localCache.Get(ctx, "topology:service"); err == nil {
 			var topology domain.ServiceTopology
@@ -209,17 +217,16 @@ func (s *TopologyService) GetServiceTopology(ctx context.Context, query domain.T
 		}
 	}
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	if s.serviceGraph.IsEmpty() {
 		if err := s.RefreshServiceTopology(ctx); err != nil {
 			return nil, err
 		}
 	}
 
+	s.mu.RLock()
 	nodes := s.serviceGraph.GetAllNodes()
 	edges := s.serviceGraph.GetAllEdges()
+	s.mu.RUnlock()
 
 	if query.HasNamespace() {
 		nodes = s.filterNodesByNamespace(nodes, query.Namespace)
@@ -237,6 +244,14 @@ func (s *TopologyService) GetServiceTopology(ctx context.Context, query domain.T
 		Edges:     edges,
 		Hash:      s.computeTopologyHash(nodes, edges),
 	}
+
+	ns := query.Namespace
+	if ns == "" {
+		ns = "all"
+	}
+	topootel.RecordQueryDuration(ctx, "service_topology", ns, float64(time.Since(start).Milliseconds()))
+	topootel.SetQueryAttrs(span, "service_topology", ns)
+	topootel.SetSpanSuccess(span)
 
 	return topology, nil
 }
@@ -256,6 +271,10 @@ func (s *TopologyService) GetServiceNodeByName(ctx context.Context, namespace, n
 }
 
 func (s *TopologyService) GetNetworkTopology(ctx context.Context, query domain.TopologyQuery) (*domain.NetworkTopology, error) {
+	ctx, span := topootel.StartQuerySpan(ctx, "network_topology")
+	defer span.End()
+	start := time.Now()
+
 	if s.localCache != nil && !query.HasNamespace() {
 		if data, err := s.localCache.Get(ctx, "topology:network"); err == nil {
 			var topology domain.NetworkTopology
@@ -265,17 +284,16 @@ func (s *TopologyService) GetNetworkTopology(ctx context.Context, query domain.T
 		}
 	}
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if s.networkGraph.IsEmpty() {
+	if s.networkGraph.IsNetworkEmpty() {
 		if err := s.RefreshNetworkTopology(ctx); err != nil {
 			return nil, err
 		}
 	}
 
+	s.mu.RLock()
 	nodes := s.networkGraph.GetAllNetworkNodes()
 	edges := s.networkGraph.GetAllNetworkEdges()
+	s.mu.RUnlock()
 
 	if query.HasNamespace() {
 		nodes = s.filterNetworkNodesByNamespace(nodes, query.Namespace)
@@ -287,6 +305,14 @@ func (s *TopologyService) GetNetworkTopology(ctx context.Context, query domain.T
 		Nodes:     nodes,
 		Edges:     edges,
 	}
+
+	ns := query.Namespace
+	if ns == "" {
+		ns = "all"
+	}
+	topootel.RecordQueryDuration(ctx, "network_topology", ns, float64(time.Since(start).Milliseconds()))
+	topootel.SetQueryAttrs(span, "network_topology", ns)
+	topootel.SetSpanSuccess(span)
 
 	return topology, nil
 }
@@ -313,19 +339,29 @@ func (s *TopologyService) GetNetworkNode(ctx context.Context, id uuid.UUID) (*do
 //   - *ImpactResult: 影响分析结果
 //   - error: 服务不存在或分析失败时返回错误
 func (s *TopologyService) AnalyzeImpact(ctx context.Context, serviceID uuid.UUID, maxDepth int) (*domain.ImpactResult, error) {
+	ctx, span := topootel.StartImpactAnalysisSpan(ctx, serviceID.String())
+	defer span.End()
+	start := time.Now()
+
 	if maxDepth <= 0 {
 		maxDepth = s.maxDepth
 	}
 
 	cached, err := s.cache.GetImpactCache(ctx, serviceID)
 	if err == nil && cached != nil {
+		topootel.SetSpanSuccess(span)
 		return cached, nil
 	}
 
 	result, err := s.analyzer.AnalyzeImpact(ctx, serviceID, maxDepth)
 	if err != nil {
+		topootel.RecordError(span, err)
 		return nil, err
 	}
+
+	topootel.RecordImpactAnalysis(ctx, serviceID.String(), result.TotalAffected, float64(time.Since(start).Milliseconds()))
+	topootel.SetImpactAttrs(span, serviceID.String(), result.TotalAffected)
+	topootel.SetSpanSuccess(span)
 
 	_ = s.cache.SetImpactCache(ctx, serviceID, result, s.cacheTTL)
 
@@ -486,6 +522,10 @@ func (s *TopologyService) GetDownstreamServices(ctx context.Context, serviceID u
 //
 // 返回: 发现失败时返回错误
 func (s *TopologyService) RefreshServiceTopology(ctx context.Context) error {
+	ctx, span := topootel.StartDiscoverySpan(ctx, "service", "refresh_service")
+	defer span.End()
+	start := time.Now()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -552,7 +592,17 @@ func (s *TopologyService) RefreshServiceTopology(ctx context.Context) error {
 		mergedEdges = append(mergedEdges, edge)
 	}
 
+	topootel.RecordDiscoveryDuration(ctx, "service", "refresh_service", float64(time.Since(start).Milliseconds()))
+	topootel.RecordDiscoveryNodes(ctx, "service", int64(len(mergedNodes)))
+	topootel.RecordDiscoveryEdges(ctx, "service", int64(len(mergedEdges)))
+	topootel.SetDiscoveryAttrs(span, "service", len(mergedNodes), len(mergedEdges))
+	topootel.SetSpanSuccess(span)
+
+	_, rebuildSpan := topootel.StartGraphRebuildSpan(ctx)
 	s.serviceGraph.Rebuild(mergedNodes, mergedEdges)
+	topootel.RecordGraphRebuild(ctx, len(mergedNodes), len(mergedEdges), float64(time.Since(start).Milliseconds()))
+	topootel.SetSpanSuccess(rebuildSpan)
+	rebuildSpan.End()
 
 	if s.repo != nil {
 		if err := s.repo.BatchSaveServiceNodes(ctx, mergedNodes); err != nil {
@@ -601,6 +651,10 @@ func (s *TopologyService) RefreshServiceTopology(ctx context.Context) error {
 //
 // 返回: 发现失败时返回错误
 func (s *TopologyService) RefreshNetworkTopology(ctx context.Context) error {
+	ctx, span := topootel.StartDiscoverySpan(ctx, "network", "refresh_network")
+	defer span.End()
+	start := time.Now()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -623,7 +677,17 @@ func (s *TopologyService) RefreshNetworkTopology(ctx context.Context) error {
 		allEdges = append(allEdges, edges...)
 	}
 
+	topootel.RecordDiscoveryDuration(ctx, "network", "refresh_network", float64(time.Since(start).Milliseconds()))
+	topootel.RecordDiscoveryNodes(ctx, "network", int64(len(allNodes)))
+	topootel.RecordDiscoveryEdges(ctx, "network", int64(len(allEdges)))
+	topootel.SetDiscoveryAttrs(span, "network", len(allNodes), len(allEdges))
+	topootel.SetSpanSuccess(span)
+
+	_, rebuildSpan := topootel.StartGraphRebuildSpan(ctx)
 	s.networkGraph.RebuildNetwork(allNodes, allEdges)
+	topootel.RecordGraphRebuild(ctx, len(allNodes), len(allEdges), float64(time.Since(start).Milliseconds()))
+	topootel.SetSpanSuccess(rebuildSpan)
+	rebuildSpan.End()
 
 	if s.repo != nil {
 		if err := s.repo.BatchSaveNetworkNodes(ctx, allNodes); err != nil {
@@ -700,7 +764,16 @@ func (s *TopologyService) GetTopologyChanges(ctx context.Context, from, to time.
 // 该方法委托给 GraphAnalyzer 执行异常检测，检测不健康服务、
 // 高错误率、高延迟等异常情况。
 func (s *TopologyService) FindAnomalies(ctx context.Context) ([]*domain.TopologyAnomaly, error) {
-	return s.analyzer.FindAnomalies(ctx)
+	ctx, span := topootel.StartAnomalyDetectionSpan(ctx)
+	defer span.End()
+
+	result, err := s.analyzer.FindAnomalies(ctx)
+	if err != nil {
+		topootel.RecordError(span, err)
+		return nil, err
+	}
+	topootel.SetSpanSuccess(span)
+	return result, nil
 }
 
 // GetTopologyStats 获取拓扑统计信息。
@@ -1048,33 +1121,21 @@ func (g *InMemoryGraph) LastUpdated() time.Time {
 	return g.lastUpdated
 }
 
-// GetEdge 获取两个节点之间的边
-//
-// TODO: 实现边查询
-// 提示：遍历 edges，找到 SourceID == sourceID && TargetID == targetID 的边
-func (g *InMemoryGraph) GetEdge(sourceID, targetID uuid.UUID) *domain.CallEdge {
-	// TODO: 实现边查询
-	// 骨架代码：
-	// g.mu.RLock()
-	// defer g.mu.RUnlock()
-	// for _, edge := range g.edges {
-	//     if edge.SourceID == sourceID && edge.TargetID == targetID {
-	//         return edge
-	//     }
-	// }
-	// return nil
-	return nil
+// IsNetworkEmpty checks whether the network graph has any nodes.
+func (g *InMemoryGraph) IsNetworkEmpty() bool {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return len(g.networkNodes) == 0
 }
 
-// IsNetworkEmpty 检查网络图是否为空
-//
-// TODO: 实现网络图空检查
-// 注意：当前 IsEmpty() 检查的是服务节点，这里应该检查网络节点
-func (g *InMemoryGraph) IsNetworkEmpty() bool {
-	// TODO: 实现网络图空检查
-	// 骨架代码：
-	// g.mu.RLock()
-	// defer g.mu.RUnlock()
-	// return len(g.networkNodes) == 0
-	return true
+// GetEdge returns the edge between two nodes by source and target IDs.
+func (g *InMemoryGraph) GetEdge(sourceID, targetID uuid.UUID) *domain.CallEdge {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	for _, edge := range g.edges {
+		if edge.SourceID == sourceID && edge.TargetID == targetID {
+			return edge
+		}
+	}
+	return nil
 }

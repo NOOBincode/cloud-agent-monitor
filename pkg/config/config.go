@@ -23,6 +23,14 @@ type Config struct {
 	Alertmanager AlertmanagerConfig
 	Redis        RedisConfig
 	Topology     TopologyConfig
+	LLM          LLMConfig
+}
+
+type LLMConfig struct {
+	Provider string
+	Model    string
+	APIKey   string
+	BaseURL  string
 }
 
 type TopologyConfig struct {
@@ -206,6 +214,12 @@ func LoadWithPath(configPath string) (*Config, error) {
 				Kubeconfig: globalViper.GetString("topology.kubernetes.kubeconfig"),
 				Namespaces: globalViper.GetStringSlice("topology.kubernetes.namespaces"),
 			},
+		},
+		LLM: LLMConfig{
+			Provider: globalViper.GetString("llm.provider"),
+			Model:    globalViper.GetString("llm.model"),
+			APIKey:   globalViper.GetString("llm.api_key"),
+			BaseURL:  globalViper.GetString("llm.base_url"),
 		},
 	}
 

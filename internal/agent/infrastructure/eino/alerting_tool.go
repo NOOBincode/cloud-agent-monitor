@@ -6,43 +6,32 @@ import (
 	"fmt"
 	"time"
 
+	agentDomain "cloud-agent-monitor/internal/agent/domain"
+	"cloud-agent-monitor/internal/alerting/application"
 	"cloud-agent-monitor/internal/alerting/domain"
 	"cloud-agent-monitor/internal/storage/models"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
-	"github.com/google/uuid"
 )
 
+// AlertingServiceInterface defines the alerting operations required by the fat tool.
 type AlertingServiceInterface interface {
 	GetAlerts(ctx context.Context, filter domain.AlertFilter) ([]*domain.Alert, error)
 	GetAlertRecords(ctx context.Context, filter models.AlertRecordFilter) ([]*models.AlertRecord, int64, error)
 	GetAlertRecordStats(ctx context.Context, from, to time.Time) (*models.AlertRecordStats, error)
 	GetNoisyAlerts(ctx context.Context, limit int) ([]*models.AlertNoiseRecord, error)
 	GetHighRiskAlerts(ctx context.Context, limit int) ([]*models.AlertNoiseRecord, error)
-	GetAlertFeedback(ctx context.Context, fingerprint string) (*AlertFeedback, error)
+	GetAlertFeedback(ctx context.Context, fingerprint string) (*application.AlertFeedback, error)
 }
 
-type AlertFeedback struct {
-	Fingerprint string         `json:"fingerprint"`
-	AlertName   string         `json:"alert_name"`
-	TotalCount  int            `json:"total_count"`
-	TruePos     int            `json:"true_positive"`
-	FalsePos    int            `json:"false_positive"`
-	Feedback    []FeedbackItem `json:"feedback"`
-}
-
-type FeedbackItem struct {
-	UserID      uuid.UUID `json:"user_id"`
-	IsUseful    bool      `json:"is_useful"`
-	Comment     string    `json:"comment"`
-	SubmittedAt time.Time `json:"submitted_at"`
-}
-
+// AlertingTool is the fat tool that dispatches alerting operations by action.
+// Supported actions: list_active, list_history, stats, noisy, high_risk, feedback.
 type AlertingTool struct {
 	alertService AlertingServiceInterface
 }
 
+// NewAlertingTool creates a new AlertingTool fat tool backed by the given service.
 func NewAlertingTool(service AlertingServiceInterface) *AlertingTool {
 	return &AlertingTool{alertService: service}
 }
@@ -323,4 +312,194 @@ func (t *AlertingTool) IsReadOnly() bool {
 
 func (t *AlertingTool) RequiredPermission() string {
 	return "alerting:read"
+}
+
+type AlertingListActiveTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewAlertingListActiveTool(fat *AlertingTool) *AlertingListActiveTool {
+	return &AlertingListActiveTool{delegate: NewFatToolDelegator(fat, "list_active")}
+}
+
+func (t *AlertingListActiveTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name:        "alerting_list_active",
+		Desc:        "List all currently active (firing) alerts with severity, service, and summary details.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{}),
+	}, nil
+}
+func (t *AlertingListActiveTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *AlertingListActiveTool) IsReadOnly() bool           { return true }
+func (t *AlertingListActiveTool) RequiredPermission() string { return "alerting:read" }
+
+type AlertingListHistoryTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewAlertingListHistoryTool(fat *AlertingTool) *AlertingListHistoryTool {
+	return &AlertingListHistoryTool{delegate: NewFatToolDelegator(fat, "list_history")}
+}
+
+func (t *AlertingListHistoryTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: "alerting_list_history",
+		Desc: "List alert history records with optional severity filtering and pagination.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"limit":    {Type: schema.Integer, Desc: "Maximum number of results (default: 20)"},
+			"severity": {Type: schema.String, Desc: "Filter by severity", Enum: []string{"critical", "warning", "info"}},
+		}),
+	}, nil
+}
+func (t *AlertingListHistoryTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *AlertingListHistoryTool) IsReadOnly() bool           { return true }
+func (t *AlertingListHistoryTool) RequiredPermission() string { return "alerting:read" }
+
+type AlertingStatsTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewAlertingStatsTool(fat *AlertingTool) *AlertingStatsTool {
+	return &AlertingStatsTool{delegate: NewFatToolDelegator(fat, "stats")}
+}
+
+func (t *AlertingStatsTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: "alerting_stats",
+		Desc: "Get alert statistics for a time range (counts by severity, average duration).",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"from": {Type: schema.String, Desc: "Start time in RFC3339 format"},
+			"to":   {Type: schema.String, Desc: "End time in RFC3339 format"},
+		}),
+	}, nil
+}
+func (t *AlertingStatsTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *AlertingStatsTool) IsReadOnly() bool           { return true }
+func (t *AlertingStatsTool) RequiredPermission() string { return "alerting:read" }
+
+type AlertingNoisyTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewAlertingNoisyTool(fat *AlertingTool) *AlertingNoisyTool {
+	return &AlertingNoisyTool{delegate: NewFatToolDelegator(fat, "noisy")}
+}
+
+func (t *AlertingNoisyTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: "alerting_noisy",
+		Desc: "Get noisy alerts — frequently firing alerts that may need tuning or silencing.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"limit": {Type: schema.Integer, Desc: "Maximum number of results (default: 20)"},
+		}),
+	}, nil
+}
+func (t *AlertingNoisyTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *AlertingNoisyTool) IsReadOnly() bool           { return true }
+func (t *AlertingNoisyTool) RequiredPermission() string { return "alerting:read" }
+
+type AlertingHighRiskTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewAlertingHighRiskTool(fat *AlertingTool) *AlertingHighRiskTool {
+	return &AlertingHighRiskTool{delegate: NewFatToolDelegator(fat, "high_risk")}
+}
+
+func (t *AlertingHighRiskTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: "alerting_high_risk",
+		Desc: "Get high-risk alerts based on frequency, severity, and impact analysis.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"limit": {Type: schema.Integer, Desc: "Maximum number of results (default: 20)"},
+		}),
+	}, nil
+}
+func (t *AlertingHighRiskTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *AlertingHighRiskTool) IsReadOnly() bool           { return true }
+func (t *AlertingHighRiskTool) RequiredPermission() string { return "alerting:read" }
+
+type AlertingGetFeedbackTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewAlertingGetFeedbackTool(fat *AlertingTool) *AlertingGetFeedbackTool {
+	return &AlertingGetFeedbackTool{delegate: NewFatToolDelegator(fat, "feedback")}
+}
+
+func (t *AlertingGetFeedbackTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: "alerting_get_feedback",
+		Desc: "Get user feedback (true/false positive, comments) for a specific alert by fingerprint.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"fingerprint": {Type: schema.String, Desc: "Alert fingerprint (required)"},
+		}),
+	}, nil
+}
+func (t *AlertingGetFeedbackTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *AlertingGetFeedbackTool) IsReadOnly() bool           { return true }
+func (t *AlertingGetFeedbackTool) RequiredPermission() string { return "alerting:read" }
+
+// AlertingToolProvider implements domain.ToolProvider for the alerting category.
+// It creates 6 thin tools (list_active, list_history, stats, noisy, high_risk, get_feedback)
+// that delegate to a single AlertingTool fat tool.
+type AlertingToolProvider struct {
+	alertService AlertingServiceInterface
+}
+
+// NewAlertingToolProvider creates a new alerting provider backed by the given service.
+func NewAlertingToolProvider(svc AlertingServiceInterface) *AlertingToolProvider {
+	return &AlertingToolProvider{alertService: svc}
+}
+
+func (p *AlertingToolProvider) Category() agentDomain.ToolCategory {
+	return agentDomain.CategoryAlerting
+}
+
+func (p *AlertingToolProvider) Tools(ctx context.Context) ([]agentDomain.ToolSpec, error) {
+	return []agentDomain.ToolSpec{
+		{Name: "alerting_list_active", Description: "List all currently active alerts", RequiredPermission: "alerting:read", IsReadOnly: true, Category: agentDomain.CategoryAlerting},
+		{Name: "alerting_list_history", Description: "List alert history records", RequiredPermission: "alerting:read", IsReadOnly: true, Category: agentDomain.CategoryAlerting},
+		{Name: "alerting_stats", Description: "Get alert statistics", RequiredPermission: "alerting:read", IsReadOnly: true, Category: agentDomain.CategoryAlerting},
+		{Name: "alerting_noisy", Description: "Get noisy alerts", RequiredPermission: "alerting:read", IsReadOnly: true, Category: agentDomain.CategoryAlerting},
+		{Name: "alerting_high_risk", Description: "Get high-risk alerts", RequiredPermission: "alerting:read", IsReadOnly: true, Category: agentDomain.CategoryAlerting},
+		{Name: "alerting_get_feedback", Description: "Get feedback for a specific alert", RequiredPermission: "alerting:read", IsReadOnly: true, Category: agentDomain.CategoryAlerting},
+	}, nil
+}
+
+func (p *AlertingToolProvider) DefaultPools() []*agentDomain.ToolPool {
+	return []*agentDomain.ToolPool{
+		{
+			ID: "alert", Name: "告警分析",
+			Description: "Alert querying, noise analysis, and feedback review",
+			Categories:  []agentDomain.ToolCategory{agentDomain.CategoryAlerting},
+			ToolNames:   []string{"alerting_list_active", "alerting_list_history", "alerting_stats", "alerting_noisy", "alerting_high_risk", "alerting_get_feedback"},
+			Keywords:    []string{"告警", "报警", "alert", "alarm", "noise", "降噪", "误报"},
+			Priority:    10, MaxTools: 8, IsBuiltin: true,
+		},
+	}
+}
+
+func (p *AlertingToolProvider) CreateTools() []ReadOnlyTool {
+	fat := NewAlertingTool(p.alertService)
+	return []ReadOnlyTool{
+		NewAlertingListActiveTool(fat),
+		NewAlertingListHistoryTool(fat),
+		NewAlertingStatsTool(fat),
+		NewAlertingNoisyTool(fat),
+		NewAlertingHighRiskTool(fat),
+		NewAlertingGetFeedbackTool(fat),
+	}
 }

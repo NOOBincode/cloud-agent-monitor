@@ -33,7 +33,7 @@ flowchart LR
   end
 
   subgraph datastack [成熟数据面]
-    MySQL[(MySQL)]
+    PG[(PostgreSQL)]
     Prom[Prometheus]
     Loki[Loki]
     Graf[Grafana]
@@ -86,7 +86,7 @@ flowchart TB
     Prom[Prometheus]
     Loki[Loki]
     Graf[Grafana]
-    MySQL[(MySQL)]
+    PG[(PostgreSQL)]
   end
 
   Human --> Graf
@@ -118,7 +118,7 @@ flowchart TB
 | 审计面 | API/MCP 行为记录与高危规则 | `internal/audit` |
 | Demo | 可注入故障的示例业务 | `demo-apps/checkout-sim`、`deploy/compose/fault-injector` |
 
-**元数据存储**：控制面与审计索引以 **PostgreSQL** 为准（与当前 `docker-compose` 一致）。若你在 ADR 中改为 MySQL，仅影响 `internal/storage` 与迁移工具，不改变分层图。
+**元数据存储**：控制面与审计索引以 **PostgreSQL 17** 为准（与当前 `docker-compose` 一致），仅影响 `internal/storage` 与迁移工具，不改变分层图。
 
 ---
 
@@ -141,7 +141,7 @@ flowchart TB
 
 ### 4.3 控制面与智能路径（Control + Advisor）
 
-1. **platform-api** 读写 **MySQL**（目录、配置版本、API Key 等）。  
+1. **platform-api** 读写 **PostgreSQL**（目录、配置版本、API Key 等）。  
 2. **obs-mcp** 经 **policy** 校验后，调用 **platform-api** 或只读封装 **integration**（Prom/Loki/Grafana API），**禁止**默认透传任意 PromQL。  
 3. **advisor-worker** 通过 **integration** + **catalog** 拉「事实」，**Eino** 编排；输出必须能映射到 **预存查询 ID / 告警名 / runbook 路径**。  
 4. **audit** 在写路径与 MCP 工具边界落库（异步队列可选 NATS/Redis Stream，见总计划）。  

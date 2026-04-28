@@ -547,7 +547,7 @@ func setupTestHandler() (*Handler, *application.TopologyService) {
 		networkNodes: []*domain.NetworkNode{networkNode},
 	}
 
-	service := application.NewTopologyService(repo, cache, []domain.DiscoveryBackend{backend}, nil, nil, nil)
+	service := application.NewTopologyService(repo, cache, []domain.DiscoveryBackend{backend}, nil, nil, nil, nil)
 	_ = service.RefreshServiceTopology(context.Background())
 	_ = service.RefreshNetworkTopology(context.Background())
 
@@ -779,7 +779,6 @@ func TestHandler_AnalyzeImpact(t *testing.T) {
 }
 
 func TestHandler_GetNetworkTopology(t *testing.T) {
-	t.Skip("Skipping due to deadlock in GetNetworkTopology - networkGraph.IsEmpty() checks service nodes instead of network nodes")
 	handler, service := setupTestHandler()
 
 	err := service.RefreshServiceTopology(context.Background())
@@ -799,7 +798,6 @@ func TestHandler_GetNetworkTopology(t *testing.T) {
 }
 
 func TestHandler_GetNetworkNode(t *testing.T) {
-	t.Skip("Skipping due to deadlock in GetNetworkTopology - networkGraph.IsEmpty() checks service nodes instead of network nodes")
 	handler, service := setupTestHandler()
 
 	networkTopology, _ := service.GetNetworkTopology(context.Background(), domain.TopologyQuery{})

@@ -49,10 +49,10 @@ CREATE TABLE obs_platform.ai_sessions (
     gen_ai_usage_output_tokens INTEGER,
     gen_ai_usage_total_tokens INTEGER,
     
-    operation VARCHAR(50),
-    prompt_tokens INTEGER,
-    completion_tokens INTEGER,
-    total_tokens INTEGER,
+    gen_ai_server_address VARCHAR(255),
+    gen_ai_server_port INTEGER,
+    gen_ai_request_encoding_formats JSONB,
+    gen_ai_response_error_code VARCHAR(50),
     
     duration_ms INTEGER,
     ttft_ms INTEGER,
@@ -87,6 +87,10 @@ COMMENT ON COLUMN obs_platform.ai_sessions.gen_ai_response_model IS 'OTel: gen_a
 COMMENT ON COLUMN obs_platform.ai_sessions.gen_ai_response_finish_reasons IS 'OTel: gen_ai.response.finish_reasons';
 COMMENT ON COLUMN obs_platform.ai_sessions.gen_ai_usage_input_tokens IS 'OTel: gen_ai.usage.input_tokens';
 COMMENT ON COLUMN obs_platform.ai_sessions.gen_ai_usage_output_tokens IS 'OTel: gen_ai.usage.output_tokens';
+COMMENT ON COLUMN obs_platform.ai_sessions.gen_ai_server_address IS 'OTel: gen_ai.server.address (inference endpoint host)';
+COMMENT ON COLUMN obs_platform.ai_sessions.gen_ai_server_port IS 'OTel: gen_ai.server.port';
+COMMENT ON COLUMN obs_platform.ai_sessions.gen_ai_request_encoding_formats IS 'OTel: gen_ai.request.encoding_formats (for embeddings)';
+COMMENT ON COLUMN obs_platform.ai_sessions.gen_ai_response_error_code IS 'OTel: gen_ai.response.error_code';
 COMMENT ON COLUMN obs_platform.ai_sessions.status IS 'OTel: status.code (success, error, throttled)';
 COMMENT ON COLUMN obs_platform.ai_sessions.resource_attributes IS 'OTel: resource.attributes (service.name, service.version, etc.)';
 
@@ -101,9 +105,6 @@ CREATE TABLE obs_platform.tool_calls (
     gen_ai_tool_type VARCHAR(50) NOT NULL,
     gen_ai_tool_description TEXT,
     gen_ai_tool_call_id VARCHAR(255),
-    
-    tool_name VARCHAR(255),
-    tool_type VARCHAR(50),
     
     arguments JSONB DEFAULT NULL,
     result JSONB DEFAULT NULL,

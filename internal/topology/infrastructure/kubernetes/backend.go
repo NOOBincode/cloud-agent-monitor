@@ -696,36 +696,32 @@ func (b *Backend) handlePodEvent(pod *corev1.Pod, eventType string) {
 // 5. 名称包含 log/metric/monitor -> edge
 // 6. 其他 -> normal
 func (b *Backend) inferImportance(svc *corev1.Service) domain.ServiceImportance {
-	// TODO: 实现服务重要性推断
-	// 骨架代码：
-	// name := strings.ToLower(svc.Name)
-	//
-	// // 核心服务
-	// criticalPatterns := []string{"gateway", "api-gateway", "ingress", "auth", "iam", "sso", "core"}
-	// for _, pattern := range criticalPatterns {
-	//     if strings.Contains(name, pattern) {
-	//         return domain.ImportanceCritical
-	//     }
-	// }
-	//
-	// // 重要服务
-	// importantPatterns := []string{"db", "database", "mysql", "postgres", "redis", "mongo",
-	//     "order", "payment", "transaction", "user", "account"}
-	// for _, pattern := range importantPatterns {
-	//     if strings.Contains(name, pattern) {
-	//         return domain.ImportanceImportant
-	//     }
-	// }
-	//
-	// // 边缘服务
-	// edgePatterns := []string{"log", "metric", "monitor", "report", "analytics", "notification"}
-	// for _, pattern := range edgePatterns {
-	//     if strings.Contains(name, pattern) {
-	//         return domain.ImportanceEdge
-	//     }
-	// }
-	//
-	// return domain.ImportanceNormal
+	name := strings.ToLower(svc.Name)
+
+	// 核心服务
+	criticalPatterns := []string{"gateway", "api-gateway", "ingress", "auth", "iam", "sso", "core"}
+	for _, pattern := range criticalPatterns {
+		if strings.Contains(name, pattern) {
+			return domain.ImportanceCritical
+		}
+	}
+
+	// 重要服务
+	importantPatterns := []string{"db", "database", "mysql", "postgres", "redis", "mongo",
+		"order", "payment", "transaction", "user", "account"}
+	for _, pattern := range importantPatterns {
+		if strings.Contains(name, pattern) {
+			return domain.ImportanceImportant
+		}
+	}
+
+	// 边缘服务
+	edgePatterns := []string{"log", "metric", "monitor", "report", "analytics", "notification"}
+	for _, pattern := range edgePatterns {
+		if strings.Contains(name, pattern) {
+			return domain.ImportanceEdge
+		}
+	}
 
 	return domain.ImportanceNormal
 }

@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -20,12 +19,6 @@ const (
 	// API Key prefix
 	APIKeyPrefix = "obs_"
 )
-
-// hashAPIKey 计算 API Key 的 SHA256 哈希值
-func hashAPIKey(key string) string {
-	hash := sha256.Sum256([]byte(key))
-	return hex.EncodeToString(hash[:])
-}
 
 // APIKeyService API密钥管理服务
 type APIKeyService struct {
@@ -76,7 +69,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, req CreateAPIKeyReques
 	fullKey := APIKeyPrefix + plainKey
 
 	// 计算哈希
-	keyHash := hashAPIKey(fullKey)
+	keyHash := HashKey(fullKey)
 
 	// 提取前缀（用于识别）
 	prefix := extractPrefix(fullKey)
@@ -123,7 +116,7 @@ func (s *APIKeyService) ValidateAPIKey(ctx context.Context, key string) (*models
 	}
 
 	// 计算哈希
-	keyHash := hashAPIKey(key)
+	keyHash := HashKey(key)
 
 	// 查询数据库
 	apiKey, err := s.repo.GetByKeyHash(ctx, keyHash)

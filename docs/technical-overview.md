@@ -48,9 +48,8 @@ Cloud Agent Monitor 是一个面向云原生环境的全栈监控解决方案，
 
 | 组件 | 用途 | 说明 |
 |------|------|------|
-| MySQL | 元数据存储 | 服务目录、用户、审计索引 |
+| PostgreSQL | 元数据存储 | 服务目录、用户、审计索引 |
 | Redis | 缓存/限流 | 支持降级路径 |
-| SQLite | 开发测试 | 本地轻量存储 |
 
 ---
 
@@ -70,7 +69,7 @@ Cloud Agent Monitor 是一个面向云原生环境的全栈监控解决方案，
 │    ServiceNode │ CallEdge │ Alert │ SLO │ AISession │ Agent     │
 ├─────────────────────────────────────────────────────────────────┤
 │                    基础设施层 (Infrastructure)                    │
-│  K8s Backend │ Prometheus Backend │ Redis Cache │ MySQL Repo    │
+│  K8s Backend │ Prometheus Backend │ Redis Cache │ PostgreSQL Repo│
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -112,7 +111,7 @@ Cloud Agent Monitor 是一个面向云原生环境的全栈监控解决方案，
   ┌─────────────────────────────────────────────────────────────┐
   │                      共享基础设施层                           │
   │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐        │
-  │  │  Redis  │  │  MySQL  │  │   K8s   │  │Prometheus│        │
+  │  │  Redis  │  │PostgreSQL│  │   K8s   │  │Prometheus│        │
   │  │  Cache  │  │   DB    │  │  API    │  │ Client  │        │
   │  └─────────┘  └─────────┘  └─────────┘  └─────────┘        │
   └─────────────────────────────────────────────────────────────┘
@@ -136,7 +135,7 @@ Cloud Agent Monitor 是一个面向云原生环境的全栈监控解决方案，
 internal/topology/
 ├── domain/           # 领域模型（ServiceNode, CallEdge, ImpactResult）
 ├── application/      # 业务服务（TopologyService, GraphAnalyzer）
-├── infrastructure/   # 技术实现（K8sBackend, RedisCache, MySQLRepo）
+├── infrastructure/   # 技术实现（K8sBackend, RedisCache, PostgreSQLRepo）
 └── interfaces/http/  # HTTP 处理器
 ```
 
@@ -214,7 +213,7 @@ internal/topology/
 
 ### 5.2 数据库迁移
 
-迁移文件位于 `internal/storage/migrations/mysql/`：
+迁移文件位于 `internal/storage/migrations/postgresql/`：
 
 | 编号 | 文件 | 内容 |
 |------|------|------|
@@ -294,7 +293,7 @@ docker compose -f deploy/compose/docker-compose.yml up -d --build
 | Grafana | 3000 | 可视化 |
 | Prometheus | 9090 | 指标采集 |
 | Loki | 3100 | 日志聚合 |
-| MySQL | 5432 | 元数据存储 |
+| PostgreSQL | 5432 | 元数据存储 |
 | checkout-sim | 18080 | Demo 应用 |
 
 ### 8.2 生产部署建议
@@ -302,7 +301,7 @@ docker compose -f deploy/compose/docker-compose.yml up -d --build
 | 组件 | 高可用方案 |
 |------|------------|
 | platform-api | 无状态水平扩展 |
-| MySQL | 主从复制 + 备份演练 |
+| PostgreSQL | 主从复制 + 备份演练 |
 | Prometheus | 双副本 + remote_write |
 | Redis | Sentinel/Cluster |
 

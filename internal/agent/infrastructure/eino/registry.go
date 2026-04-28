@@ -9,29 +9,38 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
+// PermissionChecker abstracts authorization checks for tool access.
 type PermissionChecker interface {
 	HasPermission(ctx context.Context, userID string, permission string) (bool, error)
 }
 
+// contextKey is used for storing user identity in context.
 type contextKey string
 
 const (
-	UserIDKey      contextKey = "user_id"
+	// UserIDKey stores the authenticated user ID in context.
+	UserIDKey contextKey = "user_id"
+	// PermissionsKey stores the user's permission list in context.
 	PermissionsKey contextKey = "permissions"
 )
 
+// ReadOnlyTool extends eino's InvokableTool with access control metadata.
+// Only read-only tools are allowed in the agent's tool pool.
 type ReadOnlyTool interface {
 	tool.InvokableTool
 	IsReadOnly() bool
 	RequiredPermission() string
 }
 
+// AuthzToolWrapper enforces authentication and authorization on every tool call.
+// It checks user context, read-only status, and permission before delegating to the inner tool.
 type AuthzToolWrapper struct {
 	inner    ReadOnlyTool
 	authz    PermissionChecker
 	toolName string
 }
 
+// NewAuthzToolWrapper wraps a ReadOnlyTool with authorization checks.
 func NewAuthzToolWrapper(inner ReadOnlyTool, authz PermissionChecker) *AuthzToolWrapper {
 	info, _ := inner.Info(context.Background())
 	return &AuthzToolWrapper{
@@ -67,14 +76,17 @@ func (w *AuthzToolWrapper) InvokableRun(ctx context.Context, argumentsInJSON str
 	return w.inner.InvokableRun(ctx, argumentsInJSON, opts...)
 }
 
+// ContextWithUserID returns a context with the given user ID stored.
 func ContextWithUserID(ctx context.Context, userID string) context.Context {
 	return context.WithValue(ctx, UserIDKey, userID)
 }
 
+// ContextWithPermissions returns a context with the given permission list stored.
 func ContextWithPermissions(ctx context.Context, permissions []string) context.Context {
 	return context.WithValue(ctx, PermissionsKey, permissions)
 }
 
+// GetUserIDFromContext extracts the user ID from context. Returns empty string if absent.
 func GetUserIDFromContext(ctx context.Context) string {
 	if userID, ok := ctx.Value(UserIDKey).(string); ok {
 		return userID
@@ -82,6 +94,7 @@ func GetUserIDFromContext(ctx context.Context) string {
 	return ""
 }
 
+// GetPermissionsFromContext extracts the permission list from context. Returns nil if absent.
 func GetPermissionsFromContext(ctx context.Context) []string {
 	if perms, ok := ctx.Value(PermissionsKey).([]string); ok {
 		return perms
@@ -89,12 +102,15 @@ func GetPermissionsFromContext(ctx context.Context) []string {
 	return nil
 }
 
+// ToolRegistry manages tool instances and their authorization wrappers.
+// All tools are registered as ReadOnlyTool and wrapped with AuthzToolWrapper for access control.
 type ToolRegistry struct {
 	tools    map[string]ReadOnlyTool
 	wrappers map[string]*AuthzToolWrapper
 	authz    PermissionChecker
 }
 
+// NewToolRegistry creates a new empty registry with the given permission checker.
 func NewToolRegistry(authz PermissionChecker) *ToolRegistry {
 	return &ToolRegistry{
 		tools:    make(map[string]ReadOnlyTool),
@@ -103,6 +119,7 @@ func NewToolRegistry(authz PermissionChecker) *ToolRegistry {
 	}
 }
 
+// Register adds a ReadOnlyTool to the registry, wrapping it with AuthzToolWrapper.
 func (r *ToolRegistry) Register(tool ReadOnlyTool) {
 	info, _ := tool.Info(context.Background())
 	name := info.Name
@@ -111,6 +128,7 @@ func (r *ToolRegistry) Register(tool ReadOnlyTool) {
 	r.wrappers[name] = NewAuthzToolWrapper(tool, r.authz)
 }
 
+// GetTool returns a tool wrapper by name.
 func (r *ToolRegistry) GetTool(name string) (tool.InvokableTool, bool) {
 	wrapper, ok := r.wrappers[name]
 	if !ok {
@@ -119,6 +137,7 @@ func (r *ToolRegistry) GetTool(name string) (tool.InvokableTool, bool) {
 	return wrapper, true
 }
 
+// GetTools returns all registered tool wrappers as InvokableTool slice.
 func (r *ToolRegistry) GetTools() []tool.InvokableTool {
 	tools := make([]tool.InvokableTool, 0, len(r.wrappers))
 	for _, wrapper := range r.wrappers {
@@ -127,6 +146,7 @@ func (r *ToolRegistry) GetTools() []tool.InvokableTool {
 	return tools
 }
 
+// GetToolInfos returns ToolInfo descriptors for all registered tools.
 func (r *ToolRegistry) GetToolInfos(ctx context.Context) ([]*schema.ToolInfo, error) {
 	infos := make([]*schema.ToolInfo, 0, len(r.tools))
 	for _, t := range r.tools {
@@ -139,6 +159,7 @@ func (r *ToolRegistry) GetToolInfos(ctx context.Context) ([]*schema.ToolInfo, er
 	return infos, nil
 }
 
+// ListAvailableTools returns tool metadata with permission status for each tool.
 func (r *ToolRegistry) ListAvailableTools(ctx context.Context, userID string) ([]map[string]any, error) {
 	result := make([]map[string]any, 0, len(r.tools))
 
@@ -163,6 +184,7 @@ func (r *ToolRegistry) ListAvailableTools(ctx context.Context, userID string) ([
 	return result, nil
 }
 
+// Execute runs a tool by name with the given JSON arguments, enforcing authorization.
 func (r *ToolRegistry) Execute(ctx context.Context, toolName string, argumentsInJSON string) (string, error) {
 	wrapper, ok := r.wrappers[toolName]
 	if !ok {
@@ -171,6 +193,7 @@ func (r *ToolRegistry) Execute(ctx context.Context, toolName string, argumentsIn
 	return wrapper.InvokableRun(ctx, argumentsInJSON)
 }
 
+// MarshalToolInfos serializes all tool descriptors to JSON for LLM consumption.
 func (r *ToolRegistry) MarshalToolInfos() ([]byte, error) {
 	infos, err := r.GetToolInfos(context.Background())
 	if err != nil {

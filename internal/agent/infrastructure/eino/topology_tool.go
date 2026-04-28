@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
+	agentDomain "cloud-agent-monitor/internal/agent/domain"
 	"cloud-agent-monitor/internal/topology/domain"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -13,68 +13,33 @@ import (
 	"github.com/google/uuid"
 )
 
-// TopologyServiceInterface 定义拓扑服务接口
-// 用于解耦 MCP 工具与具体实现
+// TopologyServiceInterface defines the topology operations required by the fat tool.
 type TopologyServiceInterface interface {
-	// 拓扑查询
 	GetServiceTopology(ctx context.Context, query domain.TopologyQuery) (*domain.ServiceTopology, error)
 	GetNetworkTopology(ctx context.Context, query domain.TopologyQuery) (*domain.NetworkTopology, error)
-
-	// 节点查询
 	GetServiceNode(ctx context.Context, id uuid.UUID) (*domain.ServiceNode, error)
 	GetServiceNodeByName(ctx context.Context, namespace, name string) (*domain.ServiceNode, error)
-
-	// 依赖分析
 	GetUpstreamServices(ctx context.Context, id uuid.UUID, depth int) ([]*domain.ServiceNode, error)
 	GetDownstreamServices(ctx context.Context, id uuid.UUID, depth int) ([]*domain.ServiceNode, error)
-
-	// 影响分析
 	AnalyzeImpact(ctx context.Context, serviceID uuid.UUID, maxDepth int) (*domain.ImpactResult, error)
-
-	// 路径查找
 	FindPath(ctx context.Context, sourceID, targetID uuid.UUID, maxHops int) (*domain.PathResult, error)
 	FindShortestPath(ctx context.Context, sourceID, targetID uuid.UUID) ([]domain.PathHop, error)
-
-	// 异常检测
 	FindAnomalies(ctx context.Context) ([]*domain.TopologyAnomaly, error)
-
-	// 统计信息
-	GetTopologyStats(ctx context.Context) (*TopologyStats, error)
+	GetTopologyStats(ctx context.Context) (*domain.TopologyStats, error)
 }
 
-// TopologyStats 拓扑统计信息
-type TopologyStats struct {
-	ServiceNodeCount     int       `json:"service_node_count"`
-	ServiceEdgeCount     int       `json:"service_edge_count"`
-	NetworkNodeCount     int       `json:"network_node_count"`
-	NetworkEdgeCount     int       `json:"network_edge_count"`
-	HealthyCount         int       `json:"healthy_count"`
-	UnhealthyCount       int       `json:"unhealthy_count"`
-	WarningCount         int       `json:"warning_count"`
-	CriticalServiceCount int       `json:"critical_service_count"`
-	LastUpdated          time.Time `json:"last_updated"`
-}
-
-// TopologyTool 拓扑查询 MCP 工具
-//
-// 该工具为 AI Agent 提供拓扑数据查询能力，支持：
-// - 查询服务拓扑和网络拓扑
-// - 分析服务依赖关系
-// - 影响范围分析
-// - 路径查找
-// - 异常检测
-//
-// 所有操作均为只读，Agent 无法修改拓扑数据
+// TopologyTool is the fat tool for topology queries. It dispatches by action to the TopologyServiceInterface.
+// Supported actions: get_topology, get_network_topology, get_node, get_upstream, get_downstream,
+// analyze_impact, find_path, find_shortest_path, find_anomalies, get_stats.
 type TopologyTool struct {
 	topologyService TopologyServiceInterface
 }
 
-// NewTopologyTool 创建拓扑查询工具
+// NewTopologyTool creates a new TopologyTool fat tool backed by the given service.
 func NewTopologyTool(service TopologyServiceInterface) *TopologyTool {
 	return &TopologyTool{topologyService: service}
 }
 
-// Info 返回工具信息
 func (t *TopologyTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 	return &schema.ToolInfo{
 		Name: "topology_query",
@@ -84,76 +49,37 @@ Actions:
 - get_topology: Get current service topology (optionally filtered by namespace)
 - get_network_topology: Get current network topology
 - get_node: Get service node by ID or name
-- get_upstream: Get upstream dependencies of a service (services that call this service)
-- get_downstream: Get downstream dependents of a service (services that this service calls)
+- get_upstream: Get upstream dependencies of a service
+- get_downstream: Get downstream dependents of a service
 - analyze_impact: Analyze impact scope if a service fails
 - find_path: Find all call paths between two services
 - find_shortest_path: Find the shortest call path between two services
-- find_anomalies: Detect anomalies in the topology (unhealthy services, high error rate, high latency)
+- find_anomalies: Detect anomalies in the topology
 - get_stats: Get topology statistics
 
-All operations are READ-ONLY. Agent cannot create, modify, or delete topology data.
-
-Use Cases:
-- "What services depend on the payment-service?"
-- "If the user-service goes down, what services will be affected?"
-- "Find the call path from frontend to database"
-- "Are there any unhealthy services in the production namespace?"
-- "What is the most critical service in the topology?"`,
+All operations are READ-ONLY.`,
 		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
 			"action": {
 				Type: schema.String,
 				Desc: "Action to perform",
 				Enum: []string{
-					"get_topology",
-					"get_network_topology",
-					"get_node",
-					"get_upstream",
-					"get_downstream",
-					"analyze_impact",
-					"find_path",
-					"find_shortest_path",
-					"find_anomalies",
-					"get_stats",
+					"get_topology", "get_network_topology", "get_node",
+					"get_upstream", "get_downstream", "analyze_impact",
+					"find_path", "find_shortest_path", "find_anomalies", "get_stats",
 				},
 			},
-			"service_id": {
-				Type: schema.String,
-				Desc: "Service node UUID (required for get_node, get_upstream, get_downstream, analyze_impact)",
-			},
-			"namespace": {
-				Type: schema.String,
-				Desc: "Kubernetes namespace (for filtering or get_node by name)",
-			},
-			"service_name": {
-				Type: schema.String,
-				Desc: "Service name (for get_node by name, requires namespace)",
-			},
-			"source_id": {
-				Type: schema.String,
-				Desc: "Source service UUID (for find_path, find_shortest_path)",
-			},
-			"target_id": {
-				Type: schema.String,
-				Desc: "Target service UUID (for find_path, find_shortest_path)",
-			},
-			"depth": {
-				Type: schema.Integer,
-				Desc: "Traversal depth for upstream/downstream analysis (default: 3, max: 10)",
-			},
-			"max_depth": {
-				Type: schema.Integer,
-				Desc: "Maximum depth for impact analysis (default: 5, max: 20)",
-			},
-			"max_hops": {
-				Type: schema.Integer,
-				Desc: "Maximum hops for path finding (default: 10, max: 30)",
-			},
+			"service_id":   {Type: schema.String, Desc: "Service node UUID"},
+			"namespace":    {Type: schema.String, Desc: "Kubernetes namespace"},
+			"service_name": {Type: schema.String, Desc: "Service name (requires namespace)"},
+			"source_id":    {Type: schema.String, Desc: "Source service UUID"},
+			"target_id":    {Type: schema.String, Desc: "Target service UUID"},
+			"depth":        {Type: schema.Integer, Desc: "Traversal depth (default: 3, max: 10)"},
+			"max_depth":    {Type: schema.Integer, Desc: "Max depth for impact analysis (default: 5, max: 20)"},
+			"max_hops":     {Type: schema.Integer, Desc: "Max hops for path finding (default: 10, max: 30)"},
 		}),
 	}, nil
 }
 
-// TopologyToolArgs 工具参数
 type TopologyToolArgs struct {
 	Action      string `json:"action"`
 	ServiceID   string `json:"service_id,omitempty"`
@@ -166,7 +92,6 @@ type TopologyToolArgs struct {
 	MaxHops     int    `json:"max_hops,omitempty"`
 }
 
-// InvokableRun 执行工具调用
 func (t *TopologyTool) InvokableRun(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (string, error) {
 	var args TopologyToolArgs
 	if err := json.Unmarshal([]byte(argumentsInJSON), &args); err != nil {
@@ -213,552 +138,481 @@ func (t *TopologyTool) InvokableRun(ctx context.Context, argumentsInJSON string,
 	return string(data), nil
 }
 
-// getTopology 获取服务拓扑
-//
-// TODO: 实现服务拓扑查询
-// 提示：
-// 1. 构建 domain.TopologyQuery
-// 2. 调用 t.topologyService.GetServiceTopology
-// 3. 转换为简化的返回格式（避免返回过多数据）
 func (t *TopologyTool) getTopology(ctx context.Context, args TopologyToolArgs) (any, error) {
-	// TODO: 实现服务拓扑查询
-	// 骨架代码：
-	// query := domain.TopologyQuery{}
-	// if args.Namespace != "" {
-	//     query.Namespace = args.Namespace
-	// }
-	//
-	// topology, err := t.topologyService.GetServiceTopology(ctx, query)
-	// if err != nil {
-	//     return nil, fmt.Errorf("failed to get service topology: %w", err)
-	// }
-	//
-	// // 简化返回，只返回节点和边的基本信息
-	// nodes := make([]map[string]any, len(topology.Nodes))
-	// for i, node := range topology.Nodes {
-	//     nodes[i] = map[string]any{
-	//         "id":          node.ID.String(),
-	//         "name":        node.Name,
-	//         "namespace":   node.Namespace,
-	//         "status":      node.Status,
-	//         "importance":  node.Importance,
-	//         "request_rate": node.RequestRate,
-	//         "error_rate":  node.ErrorRate,
-	//         "latency_p99": node.LatencyP99,
-	//     }
-	// }
-	//
-	// edges := make([]map[string]any, len(topology.Edges))
-	// for i, edge := range topology.Edges {
-	//     edges[i] = map[string]any{
-	//         "id":         edge.ID.String(),
-	//         "source_id":  edge.SourceID.String(),
-	//         "target_id":  edge.TargetID.String(),
-	//         "edge_type":  edge.EdgeType,
-	//         "request_rate": edge.RequestRate,
-	//         "error_rate": edge.ErrorRate,
-	//     }
-	// }
-	//
-	// return map[string]any{
-	//     "timestamp": topology.Timestamp,
-	//     "node_count": len(nodes),
-	//     "edge_count": len(edges),
-	//     "nodes": nodes,
-	//     "edges": edges,
-	// }, nil
-
-	return nil, fmt.Errorf("not implemented")
+	query := domain.TopologyQuery{Namespace: args.Namespace}
+	topo, err := t.topologyService.GetServiceTopology(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get service topology: %w", err)
+	}
+	return topo, nil
 }
 
-// getNetworkTopology 获取网络拓扑
-//
-// TODO: 实现网络拓扑查询
 func (t *TopologyTool) getNetworkTopology(ctx context.Context, args TopologyToolArgs) (any, error) {
-	// TODO: 实现网络拓扑查询
-	// 骨架代码：
-	// query := domain.TopologyQuery{}
-	// if args.Namespace != "" {
-	//     query.Namespace = args.Namespace
-	// }
-	//
-	// topology, err := t.topologyService.GetNetworkTopology(ctx, query)
-	// if err != nil {
-	//     return nil, fmt.Errorf("failed to get network topology: %w", err)
-	// }
-	//
-	// // 简化返回
-	// nodes := make([]map[string]any, len(topology.Nodes))
-	// for i, node := range topology.Nodes {
-	//     nodes[i] = map[string]any{
-	//         "id":        node.ID.String(),
-	//         "name":      node.Name,
-	//         "type":      node.Type,
-	//         "layer":     node.Layer,
-	//         "ip_address": node.IPAddress,
-	//         "namespace": node.Namespace,
-	//     }
-	// }
-	//
-	// return map[string]any{
-	//     "timestamp": topology.Timestamp,
-	//     "node_count": len(nodes),
-	//     "nodes": nodes,
-	// }, nil
-
-	return nil, fmt.Errorf("not implemented")
+	query := domain.TopologyQuery{Namespace: args.Namespace}
+	topo, err := t.topologyService.GetNetworkTopology(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network topology: %w", err)
+	}
+	return topo, nil
 }
 
-// getNode 获取服务节点
-//
-// TODO: 实现服务节点查询
-// 支持两种方式：
-// 1. 通过 service_id 直接查询
-// 2. 通过 namespace + service_name 查询
 func (t *TopologyTool) getNode(ctx context.Context, args TopologyToolArgs) (any, error) {
-	// TODO: 实现服务节点查询
-	// 骨架代码：
-	// var node *domain.ServiceNode
-	// var err error
-	//
-	// if args.ServiceID != "" {
-	//     id, parseErr := uuid.Parse(args.ServiceID)
-	//     if parseErr != nil {
-	//         return nil, fmt.Errorf("invalid service_id: %w", parseErr)
-	//     }
-	//     node, err = t.topologyService.GetServiceNode(ctx, id)
-	// } else if args.Namespace != "" && args.ServiceName != "" {
-	//     node, err = t.topologyService.GetServiceNodeByName(ctx, args.Namespace, args.ServiceName)
-	// } else {
-	//     return nil, fmt.Errorf("service_id or (namespace + service_name) is required")
-	// }
-	//
-	// if err != nil {
-	//     return nil, fmt.Errorf("failed to get service node: %w", err)
-	// }
-	//
-	// return map[string]any{
-	//     "id":          node.ID.String(),
-	//     "name":        node.Name,
-	//     "namespace":   node.Namespace,
-	//     "status":      node.Status,
-	//     "importance":  node.Importance,
-	//     "weight":      node.Weight,
-	//     "request_rate": node.RequestRate,
-	//     "error_rate":  node.ErrorRate,
-	//     "latency_p99": node.LatencyP99,
-	//     "latency_p95": node.LatencyP95,
-	//     "latency_p50": node.LatencyP50,
-	//     "pod_count":   node.PodCount,
-	//     "ready_pods":  node.ReadyPods,
-	//     "labels":      node.Labels,
-	//     "updated_at":  node.UpdatedAt,
-	// }, nil
-
-	return nil, fmt.Errorf("not implemented")
+	if args.ServiceID != "" {
+		id, err := uuid.Parse(args.ServiceID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid service_id: %w", err)
+		}
+		node, err := t.topologyService.GetServiceNode(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get service node: %w", err)
+		}
+		return node, nil
+	}
+	if args.Namespace != "" && args.ServiceName != "" {
+		node, err := t.topologyService.GetServiceNodeByName(ctx, args.Namespace, args.ServiceName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get service node by name: %w", err)
+		}
+		return node, nil
+	}
+	return nil, fmt.Errorf("service_id or namespace+service_name is required")
 }
 
-// getUpstream 获取上游依赖
-//
-// TODO: 实现上游依赖查询
 func (t *TopologyTool) getUpstream(ctx context.Context, args TopologyToolArgs) (any, error) {
-	// TODO: 实现上游依赖查询
-	// 骨架代码：
-	// if args.ServiceID == "" {
-	//     return nil, fmt.Errorf("service_id is required")
-	// }
-	//
-	// id, err := uuid.Parse(args.ServiceID)
-	// if err != nil {
-	//     return nil, fmt.Errorf("invalid service_id: %w", err)
-	// }
-	//
-	// depth := 3
-	// if args.Depth > 0 {
-	//     depth = args.Depth
-	//     if depth > 10 {
-	//         depth = 10
-	//     }
-	// }
-	//
-	// nodes, err := t.topologyService.GetUpstreamServices(ctx, id, depth)
-	// if err != nil {
-	//     return nil, fmt.Errorf("failed to get upstream services: %w", err)
-	// }
-	//
-	// result := make([]map[string]any, len(nodes))
-	// for i, node := range nodes {
-	//     result[i] = map[string]any{
-	//         "id":         node.ID.String(),
-	//         "name":       node.Name,
-	//         "namespace":  node.Namespace,
-	//         "status":     node.Status,
-	//         "importance": node.Importance,
-	//     }
-	// }
-	//
-	// return map[string]any{
-	//     "service_id": args.ServiceID,
-	//     "depth":      depth,
-	//     "total":      len(result),
-	//     "upstream":   result,
-	// }, nil
-
-	return nil, fmt.Errorf("not implemented")
+	if args.ServiceID == "" {
+		return nil, fmt.Errorf("service_id is required")
+	}
+	id, err := uuid.Parse(args.ServiceID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid service_id: %w", err)
+	}
+	depth := args.Depth
+	if depth <= 0 {
+		depth = 3
+	}
+	nodes, err := t.topologyService.GetUpstreamServices(ctx, id, depth)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get upstream services: %w", err)
+	}
+	return nodes, nil
 }
 
-// getDownstream 获取下游依赖
-//
-// TODO: 实现下游依赖查询
 func (t *TopologyTool) getDownstream(ctx context.Context, args TopologyToolArgs) (any, error) {
-	// TODO: 实现下游依赖查询
-	// 参考 getUpstream 实现
-
-	return nil, fmt.Errorf("not implemented")
+	if args.ServiceID == "" {
+		return nil, fmt.Errorf("service_id is required")
+	}
+	id, err := uuid.Parse(args.ServiceID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid service_id: %w", err)
+	}
+	depth := args.Depth
+	if depth <= 0 {
+		depth = 3
+	}
+	nodes, err := t.topologyService.GetDownstreamServices(ctx, id, depth)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get downstream services: %w", err)
+	}
+	return nodes, nil
 }
 
-// analyzeImpact 分析影响范围
-//
-// TODO: 实现影响分析
 func (t *TopologyTool) analyzeImpact(ctx context.Context, args TopologyToolArgs) (any, error) {
-	// TODO: 实现影响分析
-	// 骨架代码：
-	// if args.ServiceID == "" {
-	//     return nil, fmt.Errorf("service_id is required")
-	// }
-	//
-	// id, err := uuid.Parse(args.ServiceID)
-	// if err != nil {
-	//     return nil, fmt.Errorf("invalid service_id: %w", err)
-	// }
-	//
-	// maxDepth := 5
-	// if args.MaxDepth > 0 {
-	//     maxDepth = args.MaxDepth
-	//     if maxDepth > 20 {
-	//         maxDepth = 20
-	//     }
-	// }
-	//
-	// result, err := t.topologyService.AnalyzeImpact(ctx, id, maxDepth)
-	// if err != nil {
-	//     return nil, fmt.Errorf("failed to analyze impact: %w", err)
-	// }
-	//
-	// // 构建返回结果
-	// upstream := make([]map[string]any, len(result.Upstream))
-	// for i, node := range result.Upstream {
-	//     upstream[i] = map[string]any{
-	//         "id":         node.Node.ID.String(),
-	//         "name":       node.Node.Name,
-	//         "namespace":  node.Node.Namespace,
-	//         "depth":      node.Depth,
-	//         "impact":     node.Impact,
-	//         "is_critical": node.IsCritical,
-	//     }
-	// }
-	//
-	// downstream := make([]map[string]any, len(result.Downstream))
-	// for i, node := range result.Downstream {
-	//     downstream[i] = map[string]any{
-	//         "id":         node.Node.ID.String(),
-	//         "name":       node.Node.Name,
-	//         "namespace":  node.Node.Namespace,
-	//         "depth":      node.Depth,
-	//         "impact":     node.Impact,
-	//         "is_critical": node.IsCritical,
-	//     }
-	// }
-	//
-	// return map[string]any{
-	//     "root_service": map[string]any{
-	//         "id":         result.RootService.ID.String(),
-	//         "name":       result.RootService.Name,
-	//         "namespace":  result.RootService.Namespace,
-	//         "importance": result.RootService.Importance,
-	//     },
-	//     "total_affected":    result.TotalAffected,
-	//     "upstream_depth":    result.UpstreamDepth,
-	//     "downstream_depth":  result.DownstreamDepth,
-	//     "upstream":          upstream,
-	//     "downstream":        downstream,
-	//     "analyzed_at":       result.AnalyzedAt,
-	// }, nil
-
-	return nil, fmt.Errorf("not implemented")
+	if args.ServiceID == "" {
+		return nil, fmt.Errorf("service_id is required")
+	}
+	id, err := uuid.Parse(args.ServiceID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid service_id: %w", err)
+	}
+	maxDepth := args.MaxDepth
+	if maxDepth <= 0 {
+		maxDepth = 5
+	}
+	result, err := t.topologyService.AnalyzeImpact(ctx, id, maxDepth)
+	if err != nil {
+		return nil, fmt.Errorf("failed to analyze impact: %w", err)
+	}
+	return result, nil
 }
 
-// findPath 查找路径
-//
-// TODO: 实现路径查找
 func (t *TopologyTool) findPath(ctx context.Context, args TopologyToolArgs) (any, error) {
-	// TODO: 实现路径查找
-	// 骨架代码：
-	// if args.SourceID == "" || args.TargetID == "" {
-	//     return nil, fmt.Errorf("source_id and target_id are required")
-	// }
-	//
-	// sourceID, err := uuid.Parse(args.SourceID)
-	// if err != nil {
-	//     return nil, fmt.Errorf("invalid source_id: %w", err)
-	// }
-	//
-	// targetID, err := uuid.Parse(args.TargetID)
-	// if err != nil {
-	//     return nil, fmt.Errorf("invalid target_id: %w", err)
-	// }
-	//
-	// maxHops := 10
-	// if args.MaxHops > 0 {
-	//     maxHops = args.MaxHops
-	//     if maxHops > 30 {
-	//         maxHops = 30
-	//     }
-	// }
-	//
-	// result, err := t.topologyService.FindPath(ctx, sourceID, targetID, maxHops)
-	// if err != nil {
-	//     return nil, fmt.Errorf("failed to find path: %w", err)
-	// }
-	//
-	// // 构建路径信息
-	// paths := make([]map[string]any, len(result.Paths))
-	// for i, path := range result.Paths {
-	//     hops := make([]map[string]any, len(path))
-	//     for j, hop := range path {
-	//         hops[j] = map[string]any{
-	//             "node_id":   hop.NodeID.String(),
-	//             "node_name": hop.NodeName,
-	//             "namespace": hop.Namespace,
-	//         }
-	//     }
-	//     paths[i] = map[string]any{
-	//         "hops": hops,
-	//     }
-	// }
-	//
-	// return map[string]any{
-	//     "source_id":   args.SourceID,
-	//     "target_id":   args.TargetID,
-	//     "path_count":  len(paths),
-	//     "paths":       paths,
-	//     "found_at":    result.FoundAt,
-	// }, nil
-
-	return nil, fmt.Errorf("not implemented")
+	if args.SourceID == "" || args.TargetID == "" {
+		return nil, fmt.Errorf("source_id and target_id are required")
+	}
+	sourceID, err := uuid.Parse(args.SourceID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid source_id: %w", err)
+	}
+	targetID, err := uuid.Parse(args.TargetID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid target_id: %w", err)
+	}
+	maxHops := args.MaxHops
+	if maxHops <= 0 {
+		maxHops = 10
+	}
+	result, err := t.topologyService.FindPath(ctx, sourceID, targetID, maxHops)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find path: %w", err)
+	}
+	return result, nil
 }
 
-// findShortestPath 查找最短路径
-//
-// TODO: 实现最短路径查找
 func (t *TopologyTool) findShortestPath(ctx context.Context, args TopologyToolArgs) (any, error) {
-	// TODO: 实现最短路径查找
-	// 参考 findPath 实现
-
-	return nil, fmt.Errorf("not implemented")
+	if args.SourceID == "" || args.TargetID == "" {
+		return nil, fmt.Errorf("source_id and target_id are required")
+	}
+	sourceID, err := uuid.Parse(args.SourceID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid source_id: %w", err)
+	}
+	targetID, err := uuid.Parse(args.TargetID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid target_id: %w", err)
+	}
+	hops, err := t.topologyService.FindShortestPath(ctx, sourceID, targetID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find shortest path: %w", err)
+	}
+	return hops, nil
 }
 
-// findAnomalies 检测异常
-//
-// TODO: 实现异常检测
 func (t *TopologyTool) findAnomalies(ctx context.Context) (any, error) {
-	// TODO: 实现异常检测
-	// 骨架代码：
-	// anomalies, err := t.topologyService.FindAnomalies(ctx)
-	// if err != nil {
-	//     return nil, fmt.Errorf("failed to find anomalies: %w", err)
-	// }
-	//
-	// result := make([]map[string]any, len(anomalies))
-	// for i, anomaly := range anomalies {
-	//     result[i] = map[string]any{
-	//         "id":          anomaly.ID.String(),
-	//         "type":        anomaly.Type,
-	//         "severity":    anomaly.Severity,
-	//         "node_id":     anomaly.NodeID.String(),
-	//         "node_name":   anomaly.NodeName,
-	//         "namespace":   anomaly.Namespace,
-	//         "description": anomaly.Description,
-	//         "metrics":     anomaly.Metrics,
-	//         "detected_at": anomaly.DetectedAt,
-	//     }
-	// }
-	//
-	// return map[string]any{
-	//     "total":     len(result),
-	//     "anomalies": result,
-	// }, nil
-
-	return nil, fmt.Errorf("not implemented")
+	anomalies, err := t.topologyService.FindAnomalies(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find anomalies: %w", err)
+	}
+	return anomalies, nil
 }
 
-// getStats 获取统计信息
-//
-// TODO: 实现统计信息获取
 func (t *TopologyTool) getStats(ctx context.Context) (any, error) {
-	// TODO: 实现统计信息获取
-	// 骨架代码：
-	// stats, err := t.topologyService.GetTopologyStats(ctx)
-	// if err != nil {
-	//     return nil, fmt.Errorf("failed to get topology stats: %w", err)
-	// }
-	//
-	// return map[string]any{
-	//     "service_node_count":     stats.ServiceNodeCount,
-	//     "service_edge_count":     stats.ServiceEdgeCount,
-	//     "network_node_count":     stats.NetworkNodeCount,
-	//     "network_edge_count":     stats.NetworkEdgeCount,
-	//     "healthy_count":          stats.HealthyCount,
-	//     "unhealthy_count":        stats.UnhealthyCount,
-	//     "warning_count":          stats.WarningCount,
-	//     "critical_service_count": stats.CriticalServiceCount,
-	//     "last_updated":           stats.LastUpdated,
-	// }, nil
-
-	return nil, fmt.Errorf("not implemented")
+	stats, err := t.topologyService.GetTopologyStats(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get topology stats: %w", err)
+	}
+	return stats, nil
 }
 
-// ============ 高级扩展 ============
+func (t *TopologyTool) IsReadOnly() bool {
+	return true
+}
 
-// WeightedTopologyTool 加权拓扑查询工具
-//
-// TODO: 实现加权拓扑查询工具
-// 扩展 TopologyTool，支持加权分析
-// 注意：加权分析方法已合并到 GraphAnalyzer 中
+func (t *TopologyTool) RequiredPermission() string {
+	return "service:read"
+}
+
+type TopologyGetServiceTopologyTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewTopologyGetServiceTopologyTool(fat *TopologyTool) *TopologyGetServiceTopologyTool {
+	return &TopologyGetServiceTopologyTool{delegate: NewFatToolDelegator(fat, "get_topology")}
+}
+func (t *TopologyGetServiceTopologyTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: "topology_get_service_topology",
+		Desc: "Get current service topology map — all service nodes and their dependency edges.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"namespace": {Type: schema.String, Desc: "Filter by Kubernetes namespace"},
+		}),
+	}, nil
+}
+func (t *TopologyGetServiceTopologyTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *TopologyGetServiceTopologyTool) IsReadOnly() bool           { return true }
+func (t *TopologyGetServiceTopologyTool) RequiredPermission() string { return "service:read" }
+
+type TopologyGetNetworkTopologyTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewTopologyGetNetworkTopologyTool(fat *TopologyTool) *TopologyGetNetworkTopologyTool {
+	return &TopologyGetNetworkTopologyTool{delegate: NewFatToolDelegator(fat, "get_network_topology")}
+}
+func (t *TopologyGetNetworkTopologyTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: "topology_get_network_topology",
+		Desc: "Get current network topology — network-layer nodes and connections.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"namespace": {Type: schema.String, Desc: "Filter by Kubernetes namespace"},
+		}),
+	}, nil
+}
+func (t *TopologyGetNetworkTopologyTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *TopologyGetNetworkTopologyTool) IsReadOnly() bool           { return true }
+func (t *TopologyGetNetworkTopologyTool) RequiredPermission() string { return "service:read" }
+
+type TopologyGetNodeTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewTopologyGetNodeTool(fat *TopologyTool) *TopologyGetNodeTool {
+	return &TopologyGetNodeTool{delegate: NewFatToolDelegator(fat, "get_node")}
+}
+func (t *TopologyGetNodeTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: "topology_get_node",
+		Desc: "Get a service node by ID or by namespace+name, including health metrics.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"service_id":   {Type: schema.String, Desc: "Service node UUID"},
+			"namespace":    {Type: schema.String, Desc: "Kubernetes namespace (used with service_name)"},
+			"service_name": {Type: schema.String, Desc: "Service name (requires namespace)"},
+		}),
+	}, nil
+}
+func (t *TopologyGetNodeTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *TopologyGetNodeTool) IsReadOnly() bool           { return true }
+func (t *TopologyGetNodeTool) RequiredPermission() string { return "service:read" }
+
+type TopologyGetUpstreamTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewTopologyGetUpstreamTool(fat *TopologyTool) *TopologyGetUpstreamTool {
+	return &TopologyGetUpstreamTool{delegate: NewFatToolDelegator(fat, "get_upstream")}
+}
+func (t *TopologyGetUpstreamTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: "topology_get_upstream",
+		Desc: "Get upstream dependencies of a service (services that call this service).",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"service_id": {Type: schema.String, Desc: "Service node UUID (required)"},
+			"depth":      {Type: schema.Integer, Desc: "Traversal depth (default: 3, max: 10)"},
+		}),
+	}, nil
+}
+func (t *TopologyGetUpstreamTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *TopologyGetUpstreamTool) IsReadOnly() bool           { return true }
+func (t *TopologyGetUpstreamTool) RequiredPermission() string { return "service:read" }
+
+type TopologyGetDownstreamTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewTopologyGetDownstreamTool(fat *TopologyTool) *TopologyGetDownstreamTool {
+	return &TopologyGetDownstreamTool{delegate: NewFatToolDelegator(fat, "get_downstream")}
+}
+func (t *TopologyGetDownstreamTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: "topology_get_downstream",
+		Desc: "Get downstream dependents of a service (services that this service calls).",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"service_id": {Type: schema.String, Desc: "Service node UUID (required)"},
+			"depth":      {Type: schema.Integer, Desc: "Traversal depth (default: 3, max: 10)"},
+		}),
+	}, nil
+}
+func (t *TopologyGetDownstreamTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *TopologyGetDownstreamTool) IsReadOnly() bool           { return true }
+func (t *TopologyGetDownstreamTool) RequiredPermission() string { return "service:read" }
+
+type TopologyAnalyzeImpactTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewTopologyAnalyzeImpactTool(fat *TopologyTool) *TopologyAnalyzeImpactTool {
+	return &TopologyAnalyzeImpactTool{delegate: NewFatToolDelegator(fat, "analyze_impact")}
+}
+func (t *TopologyAnalyzeImpactTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: "topology_analyze_impact",
+		Desc: "Analyze impact scope if a service fails — upstream and downstream blast radius.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"service_id": {Type: schema.String, Desc: "Service node UUID (required)"},
+			"max_depth":  {Type: schema.Integer, Desc: "Maximum analysis depth (default: 5, max: 20)"},
+		}),
+	}, nil
+}
+func (t *TopologyAnalyzeImpactTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *TopologyAnalyzeImpactTool) IsReadOnly() bool           { return true }
+func (t *TopologyAnalyzeImpactTool) RequiredPermission() string { return "service:read" }
+
+type TopologyFindPathTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewTopologyFindPathTool(fat *TopologyTool) *TopologyFindPathTool {
+	return &TopologyFindPathTool{delegate: NewFatToolDelegator(fat, "find_path")}
+}
+func (t *TopologyFindPathTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: "topology_find_path",
+		Desc: "Find all call paths between two services.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"source_id": {Type: schema.String, Desc: "Source service UUID (required)"},
+			"target_id": {Type: schema.String, Desc: "Target service UUID (required)"},
+			"max_hops":  {Type: schema.Integer, Desc: "Maximum hops (default: 10, max: 30)"},
+		}),
+	}, nil
+}
+func (t *TopologyFindPathTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *TopologyFindPathTool) IsReadOnly() bool           { return true }
+func (t *TopologyFindPathTool) RequiredPermission() string { return "service:read" }
+
+type TopologyFindShortestPathTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewTopologyFindShortestPathTool(fat *TopologyTool) *TopologyFindShortestPathTool {
+	return &TopologyFindShortestPathTool{delegate: NewFatToolDelegator(fat, "find_shortest_path")}
+}
+func (t *TopologyFindShortestPathTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: "topology_find_shortest_path",
+		Desc: "Find the shortest call path between two services.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"source_id": {Type: schema.String, Desc: "Source service UUID (required)"},
+			"target_id": {Type: schema.String, Desc: "Target service UUID (required)"},
+		}),
+	}, nil
+}
+func (t *TopologyFindShortestPathTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *TopologyFindShortestPathTool) IsReadOnly() bool           { return true }
+func (t *TopologyFindShortestPathTool) RequiredPermission() string { return "service:read" }
+
+type TopologyFindAnomaliesTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewTopologyFindAnomaliesTool(fat *TopologyTool) *TopologyFindAnomaliesTool {
+	return &TopologyFindAnomaliesTool{delegate: NewFatToolDelegator(fat, "find_anomalies")}
+}
+func (t *TopologyFindAnomaliesTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name:        "topology_find_anomalies",
+		Desc:        "Detect anomalies in the topology — unhealthy services, high error rates, high latency.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{}),
+	}, nil
+}
+func (t *TopologyFindAnomaliesTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *TopologyFindAnomaliesTool) IsReadOnly() bool           { return true }
+func (t *TopologyFindAnomaliesTool) RequiredPermission() string { return "service:read" }
+
+type TopologyGetStatsTool struct {
+	delegate *FatToolDelegator
+}
+
+func NewTopologyGetStatsTool(fat *TopologyTool) *TopologyGetStatsTool {
+	return &TopologyGetStatsTool{delegate: NewFatToolDelegator(fat, "get_stats")}
+}
+func (t *TopologyGetStatsTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name:        "topology_get_stats",
+		Desc:        "Get topology statistics — node counts, edge counts, health distribution.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{}),
+	}, nil
+}
+func (t *TopologyGetStatsTool) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
+	return t.delegate.Delegate(ctx, argsJSON, opts...)
+}
+func (t *TopologyGetStatsTool) IsReadOnly() bool           { return true }
+func (t *TopologyGetStatsTool) RequiredPermission() string { return "service:read" }
+
+// TopologyToolProvider implements domain.ToolProvider for the topology category.
+// It creates 10 thin tools that delegate to a single TopologyTool fat tool.
+type TopologyToolProvider struct {
+	topologyService TopologyServiceInterface
+}
+
+// NewTopologyToolProvider creates a new topology provider backed by the given service.
+func NewTopologyToolProvider(svc TopologyServiceInterface) *TopologyToolProvider {
+	return &TopologyToolProvider{topologyService: svc}
+}
+
+func (p *TopologyToolProvider) Category() agentDomain.ToolCategory {
+	return agentDomain.CategoryTopology
+}
+
+func (p *TopologyToolProvider) Tools(ctx context.Context) ([]agentDomain.ToolSpec, error) {
+	return []agentDomain.ToolSpec{
+		{Name: "topology_get_service_topology", Description: "Get service topology map", RequiredPermission: "service:read", IsReadOnly: true, Category: agentDomain.CategoryTopology},
+		{Name: "topology_get_network_topology", Description: "Get network topology", RequiredPermission: "service:read", IsReadOnly: true, Category: agentDomain.CategoryTopology},
+		{Name: "topology_get_node", Description: "Get service node details", RequiredPermission: "service:read", IsReadOnly: true, Category: agentDomain.CategoryTopology},
+		{Name: "topology_get_upstream", Description: "Get upstream dependencies", RequiredPermission: "service:read", IsReadOnly: true, Category: agentDomain.CategoryTopology},
+		{Name: "topology_get_downstream", Description: "Get downstream dependents", RequiredPermission: "service:read", IsReadOnly: true, Category: agentDomain.CategoryTopology},
+		{Name: "topology_analyze_impact", Description: "Analyze impact scope of service failure", RequiredPermission: "service:read", IsReadOnly: true, Category: agentDomain.CategoryTopology},
+		{Name: "topology_find_path", Description: "Find all paths between services", RequiredPermission: "service:read", IsReadOnly: true, Category: agentDomain.CategoryTopology},
+		{Name: "topology_find_shortest_path", Description: "Find shortest path between services", RequiredPermission: "service:read", IsReadOnly: true, Category: agentDomain.CategoryTopology},
+		{Name: "topology_find_anomalies", Description: "Detect topology anomalies", RequiredPermission: "service:read", IsReadOnly: true, Category: agentDomain.CategoryTopology},
+		{Name: "topology_get_stats", Description: "Get topology statistics", RequiredPermission: "service:read", IsReadOnly: true, Category: agentDomain.CategoryTopology},
+	}, nil
+}
+
+func (p *TopologyToolProvider) DefaultPools() []*agentDomain.ToolPool {
+	return []*agentDomain.ToolPool{
+		{
+			ID: "topology", Name: "拓扑查询",
+			Description: "Service topology querying, dependency analysis, impact analysis, and path finding",
+			Categories:  []agentDomain.ToolCategory{agentDomain.CategoryTopology},
+			ToolNames: []string{
+				"topology_get_service_topology",
+				"topology_get_network_topology",
+				"topology_get_node",
+				"topology_get_upstream",
+				"topology_get_downstream",
+				"topology_analyze_impact",
+				"topology_find_path",
+				"topology_find_shortest_path",
+				"topology_find_anomalies",
+				"topology_get_stats",
+			},
+			Keywords: []string{"拓扑", "依赖", "调用链", "topology", "dependency", "upstream", "downstream", "path", "impact"},
+			Priority: 8, MaxTools: 10, IsBuiltin: true,
+		},
+	}
+}
+
+func (p *TopologyToolProvider) CreateTools() []ReadOnlyTool {
+	fat := NewTopologyTool(p.topologyService)
+	return []ReadOnlyTool{
+		NewTopologyGetServiceTopologyTool(fat),
+		NewTopologyGetNetworkTopologyTool(fat),
+		NewTopologyGetNodeTool(fat),
+		NewTopologyGetUpstreamTool(fat),
+		NewTopologyGetDownstreamTool(fat),
+		NewTopologyAnalyzeImpactTool(fat),
+		NewTopologyFindPathTool(fat),
+		NewTopologyFindShortestPathTool(fat),
+		NewTopologyFindAnomaliesTool(fat),
+		NewTopologyGetStatsTool(fat),
+	}
+}
+
 type WeightedTopologyTool struct {
 	*TopologyTool
-	// analyzer *application.GraphAnalyzer
-	// 使用 GraphAnalyzer 的加权方法：
-	// - FindShortestPathWeighted
-	// - AnalyzeImpactWeighted
-	// - FindKShortestPaths
-	// - CalculateCentralityDetailed
-	// - DetectBottlenecks
 }
 
-// NewWeightedTopologyTool 创建加权拓扑查询工具
 func NewWeightedTopologyTool(service TopologyServiceInterface) *WeightedTopologyTool {
 	return &WeightedTopologyTool{
 		TopologyTool: NewTopologyTool(service),
 	}
 }
 
-// findShortestPathWeighted 查找加权最短路径
-//
-// TODO: 实现加权最短路径查询
-// 使用 Dijkstra 算法，考虑边权重
 func (t *WeightedTopologyTool) findShortestPathWeighted(ctx context.Context, args TopologyToolArgs) (any, error) {
-	// TODO: 实现加权最短路径查询
-	// 骨架代码：
-	// if args.SourceID == "" || args.TargetID == "" {
-	//     return nil, fmt.Errorf("source_id and target_id are required")
-	// }
-	//
-	// sourceID, err := uuid.Parse(args.SourceID)
-	// if err != nil {
-	//     return nil, fmt.Errorf("invalid source_id: %w", err)
-	// }
-	//
-	// targetID, err := uuid.Parse(args.TargetID)
-	// if err != nil {
-	//     return nil, fmt.Errorf("invalid target_id: %w", err)
-	// }
-	//
-	// result, err := t.weightedAnalyzer.FindShortestPathWeighted(ctx, sourceID, targetID)
-	// if err != nil {
-	//     return nil, fmt.Errorf("failed to find weighted shortest path: %w", err)
-	// }
-	//
-	// // 构建返回结果
-	// hops := make([]map[string]any, len(result.ShortestPath))
-	// for i, hop := range result.ShortestPath {
-	//     hops[i] = map[string]any{
-	//         "node_id":   hop.NodeID.String(),
-	//         "node_name": hop.NodeName,
-	//         "namespace": hop.Namespace,
-	//         "latency":   hop.Latency,
-	//     }
-	// }
-	//
-	// return map[string]any{
-	//     "source_id":       args.SourceID,
-	//     "target_id":       args.TargetID,
-	//     "path":            hops,
-	//     "total_weight":    result.TotalWeight,
-	//     "average_latency": result.AverageLatency,
-	//     "max_error_rate":  result.MaxErrorRate,
-	// }, nil
-
 	return nil, fmt.Errorf("not implemented")
 }
 
-// analyzeImpactWeighted 加权影响分析
-//
-// TODO: 实现加权影响分析
-// 考虑服务重要性权重
 func (t *WeightedTopologyTool) analyzeImpactWeighted(ctx context.Context, args TopologyToolArgs) (any, error) {
-	// TODO: 实现加权影响分析
-	// 骨架代码：
-	// if args.ServiceID == "" {
-	//     return nil, fmt.Errorf("service_id is required")
-	// }
-	//
-	// id, err := uuid.Parse(args.ServiceID)
-	// if err != nil {
-	//     return nil, fmt.Errorf("invalid service_id: %w", err)
-	// }
-	//
-	// maxDepth := 5
-	// if args.MaxDepth > 0 {
-	//     maxDepth = args.MaxDepth
-	// }
-	//
-	// result, err := t.weightedAnalyzer.AnalyzeImpactWeighted(ctx, id, maxDepth)
-	// if err != nil {
-	//     return nil, fmt.Errorf("failed to analyze weighted impact: %w", err)
-	// }
-	//
-	// return map[string]any{
-	//     "root_service": map[string]any{
-	//         "id":         result.RootService.ID.String(),
-	//         "name":       result.RootService.Name,
-	//         "importance": result.RootService.Importance,
-	//     },
-	//     "weighted_score":      result.WeightedScore,
-	//     "total_affected":      result.TotalAffected,
-	//     "critical_services":   len(result.CriticalServices),
-	//     "impact_by_importance": result.ImpactByImportance,
-	// }, nil
-
 	return nil, fmt.Errorf("not implemented")
 }
 
-// detectBottlenecks 检测瓶颈节点
-//
-// TODO: 实现瓶颈检测
 func (t *WeightedTopologyTool) detectBottlenecks(ctx context.Context) (any, error) {
-	// TODO: 实现瓶颈检测
-	// 骨架代码：
-	// bottlenecks, err := t.weightedAnalyzer.DetectBottlenecks(ctx)
-	// if err != nil {
-	//     return nil, fmt.Errorf("failed to detect bottlenecks: %w", err)
-	// }
-	//
-	// result := make([]map[string]any, len(bottlenecks))
-	// for i, bn := range bottlenecks {
-	//     result[i] = map[string]any{
-	//         "id":       bn.Node.ID.String(),
-	//         "name":     bn.Node.Name,
-	//         "namespace": bn.Node.Namespace,
-	//         "score":    bn.Score,
-	//         "reasons":  bn.Reasons,
-	//     }
-	// }
-	//
-	// return map[string]any{
-	//     "total":       len(result),
-	//     "bottlenecks": result,
-	// }, nil
-
 	return nil, fmt.Errorf("not implemented")
 }

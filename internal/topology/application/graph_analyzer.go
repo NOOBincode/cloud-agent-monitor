@@ -14,6 +14,7 @@ package application
 import (
 	"container/heap"
 	"context"
+	"fmt"
 	"math"
 	"time"
 
@@ -22,59 +23,23 @@ import (
 	"github.com/google/uuid"
 )
 
-// 异常检测阈值常量。
-// 这些阈值用于判断服务是否存在异常，可根据实际业务需求调整。
 const (
-	// HighErrorRateThreshold 高错误率阈值，超过此值判定为异常
 	HighErrorRateThreshold = 0.05
-	// HighLatencyThresholdMs 高延迟阈值（毫秒），P99 超过此值判定为异常
 	HighLatencyThresholdMs = 1000.0
-	// DefaultAnomalyMaxDepth 异常检测的默认遍历深度
 	DefaultAnomalyMaxDepth = 5
-	// DefaultPathMaxHops 路径查找的默认最大跳数
-	DefaultPathMaxHops = 10
+	DefaultPathMaxHops     = 10
 )
 
-// GraphAnalyzer 提供基于内存图的拓扑分析功能。
-//
-// GraphAnalyzer 封装了服务调用图的各种分析算法，包括：
-//   - 影响分析：BFS 遍历上下游服务，计算影响范围
-//   - 路径查找：DFS 查找所有路径，Dijkstra 查找最短路径
-//   - 异常检测：检测不健康服务、高错误率、高延迟等异常
-//   - 中心性分析：计算节点重要性指标
-//
-// 所有分析方法都是只读的，不会修改图结构。
 type GraphAnalyzer struct {
 	graph *InMemoryGraph
 }
 
-// NewGraphAnalyzer 创建一个新的图分析器。
-//
-// 参数:
-//   - graph: 内存图实例，必须已初始化
 func NewGraphAnalyzer(graph *InMemoryGraph) *GraphAnalyzer {
 	return &GraphAnalyzer{
 		graph: graph,
 	}
 }
 
-// AnalyzeImpact 分析指定服务故障的影响范围。
-//
-// 该方法使用 BFS 算法遍历服务的上下游依赖，计算故障可能影响的
-// 所有服务。影响分数基于服务状态和调用深度计算：
-//   - 深度越近，影响越大（1/depth 权重）
-//   - 不健康服务权重 2.0，警告状态权重 1.5
-//
-// 参数:
-//   - ctx: 上下文，支持取消操作
-//   - serviceID: 待分析的服务 ID
-//   - maxDepth: 最大遍历深度，防止无限遍历
-//
-// 返回:
-//   - *ImpactResult: 影响分析结果，包含上下游服务列表
-//   - error: 服务不存在或图未就绪时返回错误
-//
-// 时间复杂度: O(V + E)，其中 V 为节点数，E 为边数
 func (a *GraphAnalyzer) AnalyzeImpact(ctx context.Context, serviceID uuid.UUID, maxDepth int) (*domain.ImpactResult, error) {
 	if a.graph == nil {
 		return nil, domain.ErrGraphNotReady
@@ -142,32 +107,14 @@ func (a *GraphAnalyzer) AnalyzeImpact(ctx context.Context, serviceID uuid.UUID, 
 	return result, nil
 }
 
-// bfsUpstream 使用 BFS 算法向上游遍历（查找依赖当前服务的服务）。
 func (a *GraphAnalyzer) bfsUpstream(start uuid.UUID, maxDepth int, visited map[uuid.UUID]int) {
 	a.bfs(start, maxDepth, visited, a.graph.GetUpstreamIDs)
 }
 
-// bfsDownstream 使用 BFS 算法向下游遍历（查找当前服务依赖的服务）。
 func (a *GraphAnalyzer) bfsDownstream(start uuid.UUID, maxDepth int, visited map[uuid.UUID]int) {
 	a.bfs(start, maxDepth, visited, a.graph.GetDownstreamIDs)
 }
 
-// bfs 是通用的广度优先搜索实现。
-//
-// 该方法实现了标准的 BFS 算法，通过 getNeighbors 函数获取相邻节点，
-// 支持向上游或下游遍历。遍历结果存储在 visited map 中，key 为节点 ID，
-// value 为该节点距离起点的深度。
-//
-// 参数:
-//   - start: 起始节点 ID
-//   - maxDepth: 最大遍历深度，超过此深度的节点将被忽略
-//   - visited: 已访问节点记录，方法会修改此 map
-//   - getNeighbors: 获取相邻节点的函数，决定遍历方向
-//
-// 算法说明:
-//   - 使用队列实现层次遍历
-//   - 已访问节点不会重复处理
-//   - 时间复杂度 O(V + E)，空间复杂度 O(V)
 func (a *GraphAnalyzer) bfs(start uuid.UUID, maxDepth int, visited map[uuid.UUID]int, getNeighbors func(uuid.UUID) []uuid.UUID) {
 	queue := []struct {
 		id    uuid.UUID
@@ -199,14 +146,6 @@ func (a *GraphAnalyzer) bfs(start uuid.UUID, maxDepth int, visited map[uuid.UUID
 	}
 }
 
-// calculateImpactScore 计算服务的影响分数。
-//
-// 影响分数综合考虑三个因素：
-//  1. 调用深度：深度越近影响越大，基础分数为 1/depth
-//  2. 服务状态：不健康服务权重 2.0，警告状态权重 1.5
-//  3. 流量大小：高 QPS 服务权重更高
-//
-// 分数范围：0 < score <= 3.0
 func (a *GraphAnalyzer) calculateImpactScore(node *domain.ServiceNode, depth int) float64 {
 	baseScore := 1.0 / float64(depth)
 
@@ -232,20 +171,6 @@ func (a *GraphAnalyzer) calculateImpactScore(node *domain.ServiceNode, depth int
 	return baseScore * statusMultiplier * trafficMultiplier
 }
 
-// FindPath 查找两个服务之间的所有调用路径。
-//
-// 该方法使用 DFS 算法查找从源服务到目标服务的所有可能路径，
-// 路径数量受 maxHops 限制。适用于需要了解完整调用链的场景。
-//
-// 参数:
-//   - ctx: 上下文，支持取消操作
-//   - sourceID: 源服务 ID（调用发起方）
-//   - targetID: 目标服务 ID（调用接收方）
-//   - maxHops: 路径最大跳数限制
-//
-// 返回:
-//   - *PathResult: 路径查找结果，包含所有找到的路径
-//   - error: 服务不存在或路径不存在时返回错误
 func (a *GraphAnalyzer) FindPath(ctx context.Context, sourceID, targetID uuid.UUID, maxHops int) (*domain.PathResult, error) {
 	if a.graph == nil {
 		return nil, domain.ErrGraphNotReady
@@ -277,17 +202,6 @@ func (a *GraphAnalyzer) FindPath(ctx context.Context, sourceID, targetID uuid.UU
 	return result, nil
 }
 
-// findAllPaths 使用 DFS 算法查找所有可能的路径。
-//
-// 该方法递归遍历图结构，收集从源节点到目标节点的所有路径。
-// 使用回溯算法避免重复访问节点，同时支持路径长度限制。
-//
-// 参数:
-//   - sourceID: 源节点 ID
-//   - targetID: 目标节点 ID
-//   - maxHops: 路径最大跳数
-//
-// 返回: 所有找到的路径列表
 func (a *GraphAnalyzer) findAllPaths(sourceID, targetID uuid.UUID, maxHops int) [][]domain.PathHop {
 	var paths [][]domain.PathHop
 	visited := make(map[uuid.UUID]bool)
@@ -298,10 +212,6 @@ func (a *GraphAnalyzer) findAllPaths(sourceID, targetID uuid.UUID, maxHops int) 
 	return paths
 }
 
-// dfsPaths 是 findAllPaths 的递归 DFS 实现。
-//
-// 该方法使用回溯算法遍历图，当到达目标节点时记录路径。
-// 注意：该方法会修改 visited 和 currentPath 参数。
 func (a *GraphAnalyzer) dfsPaths(
 	current, target uuid.UUID,
 	maxHops int,
@@ -344,21 +254,6 @@ func (a *GraphAnalyzer) dfsPaths(
 	delete(visited, current)
 }
 
-// FindShortestPath 使用 BFS 算法查找两个服务之间的最短路径。
-//
-// 最短路径定义为跳数最少的路径。该方法使用 BFS 保证找到的第一条路径
-// 就是最短路径。适用于需要快速定位调用链的场景。
-//
-// 参数:
-//   - ctx: 上下文，支持取消操作
-//   - sourceID: 源服务 ID
-//   - targetID: 目标服务 ID
-//
-// 返回:
-//   - []PathHop: 最短路径的节点序列
-//   - error: 服务不存在或路径不存在时返回错误
-//
-// 时间复杂度: O(V + E)
 func (a *GraphAnalyzer) FindShortestPath(ctx context.Context, sourceID, targetID uuid.UUID) ([]domain.PathHop, error) {
 	if a.graph == nil {
 		return nil, domain.ErrGraphNotReady
@@ -426,20 +321,6 @@ func (a *GraphAnalyzer) FindShortestPath(ctx context.Context, sourceID, targetID
 	return path, nil
 }
 
-// FindAnomalies 检测拓扑中的异常服务。
-//
-// 该方法遍历所有服务节点，检测以下类型的异常：
-//   - unhealthy_service: 服务状态为不健康
-//   - high_error_rate: 错误率超过 HighErrorRateThreshold (默认 5%)
-//   - high_latency: P99 延迟超过 HighLatencyThresholdMs (默认 1000ms)
-//   - pod_degradation: Pod 数量下降（部分 Pod 不健康）
-//
-// 参数:
-//   - ctx: 上下文，支持取消操作
-//
-// 返回:
-//   - []*TopologyAnomaly: 检测到的异常列表
-//   - error: 图未就绪时返回错误
 func (a *GraphAnalyzer) FindAnomalies(ctx context.Context) ([]*domain.TopologyAnomaly, error) {
 	if a.graph == nil {
 		return nil, domain.ErrGraphNotReady
@@ -726,11 +607,11 @@ func (pq PriorityQueue) Swap(i, j int) {
 	pq[i], pq[j] = pq[j], pq[i]
 }
 
-func (pq *PriorityQueue) Push(x interface{}) {
+func (pq *PriorityQueue) Push(x any) {
 	*pq = append(*pq, x.(*Path))
 }
 
-func (pq *PriorityQueue) Pop() interface{} {
+func (pq *PriorityQueue) Pop() any {
 	old := *pq
 	n := len(old)
 	item := old[n-1]
@@ -803,18 +684,7 @@ func (a *GraphAnalyzer) FindShortestPathWeighted(ctx context.Context, sourceID, 
 	return nil, domain.ErrPathNotFound
 }
 
-// ============ 加权图算法扩展 ============
-
-// AnalyzeImpactWeighted 分析加权影响范围
-//
-// TODO: 实现加权影响分析
-// 与普通影响分析的区别：
-// - 考虑服务重要性权重
-// - 计算加权影响分数
-// - 识别关键受影响服务
-//
-// 加权分数计算：
-// weighted_score = sum(impact * node_weight / depth) for all affected nodes
+// AnalyzeImpactWeighted performs weighted impact analysis considering service importance.
 func (a *GraphAnalyzer) AnalyzeImpactWeighted(ctx context.Context, serviceID uuid.UUID, maxDepth int) (*domain.WeightedImpactResult, error) {
 	if a.graph == nil {
 		return nil, domain.ErrGraphNotReady
@@ -825,121 +695,191 @@ func (a *GraphAnalyzer) AnalyzeImpactWeighted(ctx context.Context, serviceID uui
 		return nil, domain.ErrNodeNotFound
 	}
 
-	// TODO: 实现加权影响分析
-	// 骨架代码：
-	// // 1. 使用 BFS 遍历上下游
-	// upstreamVisited := make(map[uuid.UUID]int)
-	// downstreamVisited := make(map[uuid.UUID]int)
-	//
-	// a.bfsUpstream(serviceID, maxDepth, upstreamVisited)
-	// a.bfsDownstream(serviceID, maxDepth, downstreamVisited)
-	//
-	// // 2. 构建影响结果
-	// result := &domain.WeightedImpactResult{
-	//     ImpactResult: &domain.ImpactResult{
-	//         RootService: node,
-	//         Upstream:    make([]*domain.ImpactNode, 0),
-	//         Downstream:  make([]*domain.ImpactNode, 0),
-	//         AnalyzedAt:  time.Now(),
-	//     },
-	//     CriticalServices:    make([]*domain.ImpactNode, 0),
-	//     ImpactByImportance:  make(map[domain.ServiceImportance]int),
-	// }
-	//
-	// // 3. 计算加权分数
-	// var weightedScore float64
-	//
-	// for id, depth := range upstreamVisited {
-	//     if id == serviceID {
-	//         continue
-	//     }
-	//     n := a.graph.GetNode(id)
-	//     if n == nil {
-	//         continue
-	//     }
-	//
-	//     nodeWeight := n.GetEffectiveWeight()
-	//     impact := nodeWeight / float64(depth)
-	//     weightedScore += impact
-	//
-	//     impactNode := &domain.ImpactNode{
-	//         Node:       n,
-	//         Depth:      depth,
-	//         Impact:     impact,
-	//         IsCritical: n.Importance == domain.ImportanceCritical || n.Importance == domain.ImportanceImportant,
-	//     }
-	//
-	//     result.Upstream = append(result.Upstream, impactNode)
-	//     result.ImpactByImportance[n.Importance]++
-	//
-	//     if impactNode.IsCritical {
-	//         result.CriticalServices = append(result.CriticalServices, impactNode)
-	//     }
-	// }
-	//
-	// // 4. 同样处理下游
-	// // ...
-	//
-	// // 5. 归一化分数到 0-100
-	// result.WeightedScore = math.Min(weightedScore*10, 100)
-	// result.TotalAffected = len(result.Upstream) + len(result.Downstream)
-	//
-	// return result, nil
+	upstreamVisited := make(map[uuid.UUID]int)
+	downstreamVisited := make(map[uuid.UUID]int)
 
-	return nil, domain.ErrGraphNotReady
+	a.bfsUpstream(serviceID, maxDepth, upstreamVisited)
+	a.bfsDownstream(serviceID, maxDepth, downstreamVisited)
+
+	result := &domain.WeightedImpactResult{
+		ImpactResult: &domain.ImpactResult{
+			RootService:     node,
+			RootServiceID:   node.ID,
+			RootServiceName: node.Name,
+			Upstream:        make([]*domain.ImpactNode, 0),
+			Downstream:      make([]*domain.ImpactNode, 0),
+			CriticalPath:    make([]domain.PathHop, 0),
+			AnalyzedAt:      time.Now(),
+		},
+		CriticalServices:   make([]*domain.ImpactNode, 0),
+		ImpactByImportance: make(map[domain.ServiceImportance]int),
+	}
+
+	var weightedScore float64
+
+	for id, depth := range upstreamVisited {
+		if id == serviceID {
+			continue
+		}
+		n := a.graph.GetNode(id)
+		if n == nil {
+			continue
+		}
+
+		nodeWeight := n.GetEffectiveWeight()
+		impact := nodeWeight / float64(depth)
+		weightedScore += impact
+
+		impactNode := &domain.ImpactNode{
+			Node:       n,
+			Depth:      depth,
+			Impact:     impact,
+			IsCritical: n.Importance == domain.ImportanceCritical || n.Importance == domain.ImportanceImportant,
+		}
+
+		result.Upstream = append(result.Upstream, impactNode)
+		result.ImpactByImportance[n.Importance]++
+
+		if impactNode.IsCritical {
+			result.CriticalServices = append(result.CriticalServices, impactNode)
+		}
+	}
+
+	for id, depth := range downstreamVisited {
+		if id == serviceID {
+			continue
+		}
+		n := a.graph.GetNode(id)
+		if n == nil {
+			continue
+		}
+
+		nodeWeight := n.GetEffectiveWeight()
+		impact := nodeWeight / float64(depth)
+		weightedScore += impact
+
+		impactNode := &domain.ImpactNode{
+			Node:       n,
+			Depth:      depth,
+			Impact:     impact,
+			IsCritical: n.Importance == domain.ImportanceCritical || n.Importance == domain.ImportanceImportant,
+		}
+
+		result.Downstream = append(result.Downstream, impactNode)
+		result.ImpactByImportance[n.Importance]++
+
+		if impactNode.IsCritical {
+			result.CriticalServices = append(result.CriticalServices, impactNode)
+		}
+	}
+
+	result.WeightedScore = math.Min(weightedScore*10, 100)
+	result.TotalAffected = len(result.Upstream) + len(result.Downstream)
+	if len(result.Upstream) > 0 {
+		result.UpstreamDepth = result.Upstream[len(result.Upstream)-1].Depth
+	}
+	if len(result.Downstream) > 0 {
+		result.DownstreamDepth = result.Downstream[len(result.Downstream)-1].Depth
+	}
+
+	return result, nil
 }
 
-// FindKShortestPaths 查找 K 条最短路径（Yen's 算法）
-//
-// TODO: 实现 Yen's K 最短路径算法
-// 算法步骤：
-// 1. 使用 Dijkstra 找到最短路径 P1
-// 2. 对于每条已找到的路径 Pi，生成候选路径：
-//   - 依次移除 Pi 中的每条边
-//   - 使用 Dijkstra 找到新的最短路径
-//   - 将候选路径加入优先队列
-//
-// 3. 从候选队列中选择最短的作为下一条路径
-// 4. 重复直到找到 K 条路径或队列为空
-//
-// 学习要点：
-// - Yen's 算法：在 Dijkstra 基础上扩展，找多条路径
-// - 候选路径生成：通过"偏离"已有路径生成新路径
-// - 应用场景：需要备选路径的容灾场景
+// FindKShortestPaths finds k shortest paths using Yen's algorithm.
 func (a *GraphAnalyzer) FindKShortestPaths(ctx context.Context, sourceID, targetID uuid.UUID, k int, weightFunc func(edge *domain.CallEdge) float64) ([]*domain.WeightedPathResult, error) {
 	if a.graph == nil {
 		return nil, domain.ErrGraphNotReady
 	}
 
-	// TODO: 实现 Yen's K 最短路径算法
-	// 骨架代码：
-	// var results []*domain.WeightedPathResult
-	//
-	// // 1. 找到最短路径
-	// nodes, err := a.FindShortestPathWeighted(ctx, sourceID, targetID, weightFunc)
-	// if err != nil {
-	//     return nil, err
-	// }
-	//
-	// // 2. 转换为 WeightedPathResult
-	// // ...
-	//
-	// // 3. 候选路径队列
-	// // ...
-	//
-	// return results, nil
+	if a.graph.GetNode(sourceID) == nil || a.graph.GetNode(targetID) == nil {
+		return nil, domain.ErrNodeNotFound
+	}
 
-	return nil, domain.ErrPathNotFound
+	if weightFunc == nil {
+		weightFunc = func(edge *domain.CallEdge) float64 { return 1.0 }
+	}
+
+	firstPathNodes, err := a.FindShortestPathWeighted(ctx, sourceID, targetID, weightFunc)
+	if err != nil {
+		return nil, err
+	}
+
+	firstResult := a.buildWeightedPathResultFromIDs(sourceID, targetID, firstPathNodes, weightFunc)
+	results := []*domain.WeightedPathResult{firstResult}
+
+	if k == 1 {
+		return results, nil
+	}
+
+	candidates := &PriorityQueue{}
+	heap.Init(candidates)
+
+	for i := 1; i < k && len(results) > 0; i++ {
+		prevPathHops := results[i-1].ShortestPath
+		if len(prevPathHops) == 0 {
+			continue
+		}
+
+		for spurIndex := 0; spurIndex < len(prevPathHops)-1; spurIndex++ {
+			rootPath := prevPathHops[:spurIndex+1]
+
+			var removedEdgeKeys []string
+			for _, prevResult := range results {
+				prevP := prevResult.ShortestPath
+				if len(prevP) > spurIndex {
+					match := true
+					for j := 0; j <= spurIndex; j++ {
+						if prevP[j].NodeID != rootPath[j].NodeID {
+							match = false
+							break
+						}
+					}
+					if match && len(prevP) > spurIndex {
+						removedEdgeKeys = append(removedEdgeKeys, fmt.Sprintf("%s->%s", prevP[spurIndex].NodeID, prevP[spurIndex+1].NodeID))
+					}
+				}
+			}
+
+			var removedNodeIDs []uuid.UUID
+			for j := 0; j < spurIndex; j++ {
+				removedNodeIDs = append(removedNodeIDs, rootPath[j].NodeID)
+			}
+
+			spurPath, spurErr := a.findSpurPath(rootPath[spurIndex].NodeID, targetID, removedEdgeKeys, removedNodeIDs, weightFunc)
+			if spurErr != nil {
+				continue
+			}
+
+			fullPath := make([]domain.PathHop, len(rootPath)+len(spurPath)-1)
+			copy(fullPath[:len(rootPath)], rootPath)
+			copy(fullPath[len(rootPath):], spurPath[1:])
+
+			totalWeight := a.calculatePathWeight(fullPath, weightFunc)
+
+			isDuplicate := false
+			for _, existing := range results {
+				if a.pathsEqual(existing.ShortestPath, fullPath) {
+					isDuplicate = true
+					break
+				}
+			}
+			if !isDuplicate {
+				heap.Push(candidates, &Path{Nodes: pathHopIDs(fullPath), Cost: totalWeight})
+			}
+		}
+
+		if candidates.Len() == 0 {
+			break
+		}
+
+		best := heap.Pop(candidates).(*Path)
+		result := a.buildWeightedPathResultFromIDs(sourceID, targetID, best.Nodes, weightFunc)
+		results = append(results, result)
+	}
+
+	return results, nil
 }
 
-// CalculateCentralityDetailed 计算节点详细中心性指标
-//
-// TODO: 实现详细中心性计算
-// 中心性指标：
-// - 度中心性：直接连接数
-// - 接近中心性：到其他节点的平均距离
-// - 介数中心性：经过该节点的最短路径数量
-// - 加权中心性：考虑边权重的中心性
 func (a *GraphAnalyzer) CalculateCentralityDetailed(ctx context.Context, nodeID uuid.UUID) (*CentralityResult, error) {
 	if a.graph == nil {
 		return nil, domain.ErrGraphNotReady
@@ -950,32 +890,40 @@ func (a *GraphAnalyzer) CalculateCentralityDetailed(ctx context.Context, nodeID 
 		return nil, domain.ErrNodeNotFound
 	}
 
-	// TODO: 实现详细中心性计算
-	// 骨架代码：
-	// result := &CentralityResult{
-	//     NodeID: nodeID,
-	// }
-	//
-	// // 度中心性
-	// upstream := a.graph.GetUpstreamIDs(nodeID)
-	// downstream := a.graph.GetDownstreamIDs(nodeID)
-	// result.DegreeCentrality = float64(len(upstream) + len(downstream))
-	//
-	// // 接近中心性（需要计算到所有节点的最短路径）
-	// // ...
-	//
-	// // 介数中心性（使用已有的 calculateBetweennessCentrality）
-	// result.BetweennessCentrality = a.calculateBetweennessCentrality(nodeID)
-	//
-	// // 加权中心性
-	// result.WeightedCentrality = result.DegreeCentrality * node.GetEffectiveWeight()
-	//
-	// return result, nil
+	result := &CentralityResult{
+		NodeID: nodeID,
+	}
 
-	return nil, domain.ErrGraphNotReady
+	upstream := a.graph.GetUpstreamIDs(nodeID)
+	downstream := a.graph.GetDownstreamIDs(nodeID)
+	result.DegreeCentrality = float64(len(upstream) + len(downstream))
+
+	result.BetweennessCentrality = a.calculateBetweennessCentrality(nodeID)
+
+	// Closeness centrality: average reciprocal distance to all reachable nodes
+	totalNodes := a.graph.GetAllNodes()
+	reachableCount := 0
+	totalDistance := 0.0
+	for _, target := range totalNodes {
+		if target.ID == nodeID {
+			continue
+		}
+		visited := make(map[uuid.UUID]int)
+		a.bfs(nodeID, 10, visited, a.graph.GetDownstreamIDs)
+		if depth, ok := visited[target.ID]; ok {
+			reachableCount++
+			totalDistance += float64(depth)
+		}
+	}
+	if reachableCount > 0 && totalDistance > 0 {
+		result.ClosenessCentrality = float64(reachableCount) / totalDistance
+	}
+
+	result.WeightedCentrality = result.DegreeCentrality * node.GetEffectiveWeight()
+
+	return result, nil
 }
 
-// CentralityResult 中心性计算结果
 type CentralityResult struct {
 	NodeID                uuid.UUID `json:"node_id"`
 	DegreeCentrality      float64   `json:"degree_centrality"`
@@ -984,198 +932,398 @@ type CentralityResult struct {
 	WeightedCentrality    float64   `json:"weighted_centrality"`
 }
 
-// FindCriticalPath 查找关键路径
-//
-// TODO: 实现关键路径查找
-// 关键路径：影响分数最高的路径
-// 用于识别故障传播的主要路径
 func (a *GraphAnalyzer) FindCriticalPath(ctx context.Context, serviceID uuid.UUID, maxDepth int) ([]domain.PathHop, float64, error) {
-	// TODO: 实现关键路径查找
-	// 提示：
-	// 1. 分析影响范围
-	// 2. 找到影响分数最高的路径
-	// 3. 考虑服务重要性权重
+	if a.graph == nil {
+		return nil, 0, domain.ErrGraphNotReady
+	}
 
-	return nil, 0, domain.ErrGraphNotReady
+	node := a.graph.GetNode(serviceID)
+	if node == nil {
+		return nil, 0, domain.ErrNodeNotFound
+	}
+
+	impactResult, err := a.AnalyzeImpact(ctx, serviceID, maxDepth)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	allImpacted := impactNodeListByScore(impactResult)
+
+	bestPath := make([]domain.PathHop, 0)
+	bestScore := 0.0
+
+	for _, impactNode := range allImpacted {
+		paths := a.findAllPaths(serviceID, impactNode.Node.ID, maxDepth)
+		for _, path := range paths {
+			score := 0.0
+			for _, hop := range path {
+				n := a.graph.GetNode(hop.NodeID)
+				if n != nil {
+					score += n.GetEffectiveWeight()
+				}
+			}
+			if score > bestScore {
+				bestScore = score
+				bestPath = path
+			}
+		}
+		if bestScore > 0 {
+			break
+		}
+	}
+
+	if len(bestPath) == 0 {
+		return nil, 0, domain.ErrPathNotFound
+	}
+
+	return bestPath, bestScore, nil
 }
 
-// DetectBottlenecks 检测瓶颈节点
-//
-// TODO: 实现瓶颈检测
-// 瓶颈节点特征：
-// - 高介数中心性：很多最短路径经过
-// - 高流量：RequestRate 高
-// - 高延迟：LatencyP99 高
-// - 高错误率：ErrorRate 高
+func impactNodeListByScore(result *domain.ImpactResult) []*domain.ImpactNode {
+	all := append(result.Upstream, result.Downstream...)
+	sortByImpact(all)
+	return all
+}
+
+func sortByImpact(nodes []*domain.ImpactNode) {
+	for i := 1; i < len(nodes); i++ {
+		for j := i; j > 0 && nodes[j].Impact > nodes[j-1].Impact; j-- {
+			nodes[j], nodes[j-1] = nodes[j-1], nodes[j]
+		}
+	}
+}
+
 func (a *GraphAnalyzer) DetectBottlenecks(ctx context.Context) ([]*BottleneckNode, error) {
-	// TODO: 实现瓶颈检测
-	// 骨架代码：
-	// var bottlenecks []*BottleneckNode
-	//
-	// nodes := a.graph.GetAllNodes()
-	// for _, node := range nodes {
-	//     centrality, _ := a.CalculateCentralityDetailed(ctx, node.ID)
-	//
-	//     // 计算瓶颈分数
-	//     score := centrality.WeightedCentrality * (1 + node.ErrorRate) * (1 + node.LatencyP99/1000)
-	//
-	//     if score > 1.0 { // 阈值
-	//         bottlenecks = append(bottlenecks, &BottleneckNode{
-	//             Node:    node,
-	//             Score:   score,
-	//             Reasons: a.identifyBottleneckReasons(node, centrality),
-	//         })
-	//     }
-	// }
-	//
-	// return bottlenecks, nil
+	if a.graph == nil {
+		return nil, domain.ErrGraphNotReady
+	}
 
-	return nil, domain.ErrGraphNotReady
+	var bottlenecks []*BottleneckNode
+
+	nodes := a.graph.GetAllNodes()
+	for _, node := range nodes {
+		centrality, _ := a.CalculateCentralityDetailed(ctx, node.ID)
+
+		score := centrality.WeightedCentrality * (1 + node.ErrorRate) * (1 + node.LatencyP99/1000)
+
+		if score > 1.0 {
+			bottlenecks = append(bottlenecks, &BottleneckNode{
+				Node:    node,
+				Score:   score,
+				Reasons: identifyBottleneckReasons(node, centrality),
+			})
+		}
+	}
+
+	return bottlenecks, nil
 }
 
-// BottleneckNode 瓶颈节点
 type BottleneckNode struct {
 	Node    *domain.ServiceNode `json:"node"`
 	Score   float64             `json:"score"`
 	Reasons []string            `json:"reasons"`
 }
 
-// identifyBottleneckReasons 识别瓶颈原因
-//
-// TODO: 实现瓶颈原因识别
-func (a *GraphAnalyzer) identifyBottleneckReasons(node *domain.ServiceNode, centrality *CentralityResult) []string {
-	// TODO: 实现瓶颈原因识别
-	// 骨架代码：
-	// var reasons []string
-	//
-	// if centrality.BetweennessCentrality > 10 {
-	//     reasons = append(reasons, "high_betweenness")
-	// }
-	// if node.RequestRate > 1000 {
-	//     reasons = append(reasons, "high_traffic")
-	// }
-	// if node.LatencyP99 > 500 {
-	//     reasons = append(reasons, "high_latency")
-	// }
-	// if node.ErrorRate > 0.01 {
-	//     reasons = append(reasons, "high_error_rate")
-	// }
-	//
-	// return reasons
+func identifyBottleneckReasons(node *domain.ServiceNode, centrality *CentralityResult) []string {
+	var reasons []string
 
-	return nil
+	if centrality.BetweennessCentrality > 10 {
+		reasons = append(reasons, "high_betweenness")
+	}
+	if node.RequestRate > 1000 {
+		reasons = append(reasons, "high_traffic")
+	}
+	if node.LatencyP99 > 500 {
+		reasons = append(reasons, "high_latency")
+	}
+	if node.ErrorRate > 0.01 {
+		reasons = append(reasons, "high_error_rate")
+	}
+
+	return reasons
 }
 
-// ============ A* 算法扩展 ============
-
-// FindShortestPathAStar 使用 A* 算法查找最短路径
-//
-// TODO: 实现 A* 算法
-// A* 算法使用启发式函数加速搜索
-// f(n) = g(n) + h(n)
-// - g(n): 从源节点到 n 的实际代价
-// - h(n): 从 n 到目标节点的估计代价（启发式函数）
-//
-// 启发式函数选择：
-// - 欧几里得距离（如果有坐标）
-// - 最小边权重 * 跳数估计
-// - 基于历史数据的估计
+// FindShortestPathAStar finds the shortest path using A* algorithm with a heuristic function.
 func (a *GraphAnalyzer) FindShortestPathAStar(ctx context.Context, sourceID, targetID uuid.UUID, weightFunc func(edge *domain.CallEdge) float64, heuristic func(uuid.UUID) float64) ([]uuid.UUID, error) {
-	// TODO: 实现 A* 算法
-	// 骨架代码：
-	// if a.graph == nil {
-	//     return nil, domain.ErrGraphNotReady
-	// }
-	//
-	// if a.graph.GetNode(sourceID) == nil || a.graph.GetNode(targetID) == nil {
-	//     return nil, domain.ErrNodeNotFound
-	// }
-	//
-	// // 初始化
-	// gScore := make(map[uuid.UUID]float64)
-	// fScore := make(map[uuid.UUID]float64)
-	// parent := make(map[uuid.UUID]uuid.UUID)
-	//
-	// for _, node := range a.graph.GetAllNodes() {
-	//     gScore[node.ID] = math.Inf(1)
-	//     fScore[node.ID] = math.Inf(1)
-	// }
-	//
-	// gScore[sourceID] = 0
-	// fScore[sourceID] = heuristic(sourceID)
-	//
-	// // 开放列表
-	// openSet := &PriorityQueue{}
-	// heap.Init(openSet)
-	// heap.Push(openSet, &Path{Nodes: []uuid.UUID{sourceID}, Cost: fScore[sourceID]})
-	//
-	// // A* 主循环
-	// for openSet.Len() > 0 {
-	//     current := heap.Pop(openSet).(*Path)
-	//     currentNode := current.Nodes[len(current.Nodes)-1]
-	//
-	//     if currentNode == targetID {
-	//         return current.Nodes, nil
-	//     }
-	//
-	//     // 遍历邻居
-	//     // ...
-	// }
-	//
-	// return nil, domain.ErrPathNotFound
+	if a.graph == nil {
+		return nil, domain.ErrGraphNotReady
+	}
+
+	if a.graph.GetNode(sourceID) == nil || a.graph.GetNode(targetID) == nil {
+		return nil, domain.ErrNodeNotFound
+	}
+
+	if weightFunc == nil {
+		weightFunc = func(edge *domain.CallEdge) float64 { return 1.0 }
+	}
+
+	gScore := make(map[uuid.UUID]float64)
+	for _, node := range a.graph.GetAllNodes() {
+		gScore[node.ID] = math.Inf(1)
+	}
+	gScore[sourceID] = 0
+
+	openSet := &PriorityQueue{}
+	heap.Init(openSet)
+	heap.Push(openSet, &Path{Nodes: []uuid.UUID{sourceID}, Cost: heuristic(sourceID)})
+
+	closedSet := make(map[uuid.UUID]bool)
+
+	for openSet.Len() > 0 {
+		current := heap.Pop(openSet).(*Path)
+		currentNode := current.Nodes[len(current.Nodes)-1]
+
+		if currentNode == targetID {
+			return current.Nodes, nil
+		}
+
+		if closedSet[currentNode] {
+			continue
+		}
+		closedSet[currentNode] = true
+
+		edges := a.graph.GetAllEdges()
+		for _, edge := range edges {
+			if edge.SourceID != currentNode {
+				continue
+			}
+
+			tentativeG := gScore[currentNode] + weightFunc(edge)
+			if tentativeG < gScore[edge.TargetID] {
+				gScore[edge.TargetID] = tentativeG
+				fScore := tentativeG + heuristic(edge.TargetID)
+
+				newPath := make([]uuid.UUID, len(current.Nodes)+1)
+				copy(newPath, current.Nodes)
+				newPath[len(newPath)-1] = edge.TargetID
+
+				heap.Push(openSet, &Path{Nodes: newPath, Cost: fScore})
+			}
+		}
+	}
 
 	return nil, domain.ErrPathNotFound
 }
 
-// DefaultHeuristic 默认启发式函数
-//
-// TODO: 实现默认启发式函数
-// 使用最小边权重 * 估计跳数
 func (a *GraphAnalyzer) DefaultHeuristic(targetID uuid.UUID, weightFunc func(edge *domain.CallEdge) float64) func(uuid.UUID) float64 {
+	if weightFunc == nil {
+		weightFunc = func(edge *domain.CallEdge) float64 { return 1.0 }
+	}
+	minWeight := 1.0
+	edges := a.graph.GetAllEdges()
+	for _, edge := range edges {
+		w := weightFunc(edge)
+		if w > 0 && w < minWeight {
+			minWeight = w
+		}
+	}
 	return func(nodeID uuid.UUID) float64 {
-		// TODO: 实现启发式函数
-		// 骨架代码：
-		// // 使用最小边权重作为估计
-		// minWeight := 1.0
-		// edges := a.graph.GetAllEdges()
-		// for _, edge := range edges {
-		//     w := weightFunc(edge)
-		//     if w < minWeight {
-		//         minWeight = w
-		//     }
-		// }
-		// // 假设最少需要 1 跳
-		// return minWeight
-
-		return 1.0
+		return minWeight
 	}
 }
 
-// ============ 时间相关扩展 ============
-
-// TimeDependentWeight 时间相关权重
-// 不同时间段权重可能不同（如高峰期权重更高）
 type TimeDependentWeight struct {
 	BaseWeight  float64
-	TimeFactors map[time.Weekday]map[int]float64 // 星期 -> 小时 -> 因子
+	TimeFactors map[time.Weekday]map[int]float64
 }
 
-// GetWeight 获取指定时间的权重
-//
-// TODO: 实现时间相关权重计算
 func (tdw *TimeDependentWeight) GetWeight(t time.Time) float64 {
-	// TODO: 实现时间相关权重
-	// 骨架代码：
-	// weekday := t.Weekday()
-	// hour := t.Hour()
-	//
-	// if dayFactors, ok := tdw.TimeFactors[weekday]; ok {
-	//     if factor, ok := dayFactors[hour]; ok {
-	//         return tdw.BaseWeight * factor
-	//     }
-	// }
-	//
-	// return tdw.BaseWeight
+	weekday := t.Weekday()
+	hour := t.Hour()
+
+	if dayFactors, ok := tdw.TimeFactors[weekday]; ok {
+		if factor, ok := dayFactors[hour]; ok {
+			return tdw.BaseWeight * factor
+		}
+	}
 
 	return tdw.BaseWeight
+}
+
+// Helper methods for Yen's algorithm and weighted path building.
+
+func (a *GraphAnalyzer) buildWeightedPathResultFromIDs(sourceID, targetID uuid.UUID, nodeIDs []uuid.UUID, weightFunc func(edge *domain.CallEdge) float64) *domain.WeightedPathResult {
+	pathHops := a.buildPathHopsFromIDs(nodeIDs)
+	totalWeight := 0.0
+	maxErrorRate := 0.0
+	totalLatency := 0.0
+
+	for i := 0; i < len(nodeIDs)-1; i++ {
+		edge := a.graph.GetEdge(nodeIDs[i], nodeIDs[i+1])
+		if edge != nil {
+			totalWeight += weightFunc(edge)
+			if edge.ErrorRate > maxErrorRate {
+				maxErrorRate = edge.ErrorRate
+			}
+			totalLatency += edge.LatencyP99
+		} else {
+			totalWeight += 1.0
+		}
+	}
+
+	avgLatency := 0.0
+	if len(pathHops) > 1 {
+		avgLatency = totalLatency / float64(len(pathHops)-1)
+	}
+
+	sourceName := ""
+	targetName := ""
+	sn := a.graph.GetNode(sourceID)
+	if sn != nil {
+		sourceName = sn.Name
+	}
+	tn := a.graph.GetNode(targetID)
+	if tn != nil {
+		targetName = tn.Name
+	}
+
+	return &domain.WeightedPathResult{
+		PathResult: &domain.PathResult{
+			SourceID:     sourceID,
+			TargetID:     targetID,
+			SourceName:   sourceName,
+			TargetName:   targetName,
+			Paths:        [][]domain.PathHop{pathHops},
+			ShortestPath: pathHops,
+			ShortestHops: len(pathHops),
+			FoundAt:      time.Now(),
+		},
+		TotalWeight:    totalWeight,
+		AverageLatency: avgLatency,
+		MaxErrorRate:   maxErrorRate,
+	}
+}
+
+func (a *GraphAnalyzer) buildPathHopsFromIDs(nodeIDs []uuid.UUID) []domain.PathHop {
+	hops := make([]domain.PathHop, len(nodeIDs))
+	for i, id := range nodeIDs {
+		node := a.graph.GetNode(id)
+		if node != nil {
+			hops[i] = domain.PathHop{
+				NodeID:    id,
+				NodeName:  node.Name,
+				Namespace: node.Namespace,
+			}
+		} else {
+			hops[i] = domain.PathHop{NodeID: id}
+		}
+	}
+	return hops
+}
+
+func (a *GraphAnalyzer) calculatePathWeight(hops []domain.PathHop, weightFunc func(edge *domain.CallEdge) float64) float64 {
+	total := 0.0
+	for i := 0; i < len(hops)-1; i++ {
+		edge := a.graph.GetEdge(hops[i].NodeID, hops[i+1].NodeID)
+		if edge != nil {
+			total += weightFunc(edge)
+		} else {
+			total += 1.0
+		}
+	}
+	return total
+}
+
+func (a *GraphAnalyzer) pathsEqual(aPath, bPath []domain.PathHop) bool {
+	if len(aPath) != len(bPath) {
+		return false
+	}
+	for i := range aPath {
+		if aPath[i].NodeID != bPath[i].NodeID {
+			return false
+		}
+	}
+	return true
+}
+
+func pathHopIDs(hops []domain.PathHop) []uuid.UUID {
+	ids := make([]uuid.UUID, len(hops))
+	for i, hop := range hops {
+		ids[i] = hop.NodeID
+	}
+	return ids
+}
+
+// findSpurPath finds a shortest path from spurNode to target, excluding specified edges and nodes.
+func (a *GraphAnalyzer) findSpurPath(spurNodeID, targetID uuid.UUID, removedEdgeKeys []string, removedNodeIDs []uuid.UUID, weightFunc func(edge *domain.CallEdge) float64) ([]domain.PathHop, error) {
+	removedEdgeSet := make(map[string]bool, len(removedEdgeKeys))
+	for _, k := range removedEdgeKeys {
+		removedEdgeSet[k] = true
+	}
+
+	removedNodeSet := make(map[uuid.UUID]bool, len(removedNodeIDs))
+	for _, id := range removedNodeIDs {
+		removedNodeSet[id] = true
+	}
+
+	parent := make(map[uuid.UUID]uuid.UUID)
+	visited := make(map[uuid.UUID]bool)
+	queue := []uuid.UUID{spurNodeID}
+	visited[spurNodeID] = true
+
+	found := false
+	for len(queue) > 0 && !found {
+		current := queue[0]
+		queue = queue[1:]
+
+		if current == targetID {
+			found = true
+			break
+		}
+
+		edges := a.graph.GetAllEdges()
+		for _, edge := range edges {
+			if edge.SourceID != current {
+				continue
+			}
+
+			edgeKey := fmt.Sprintf("%s->%s", edge.SourceID, edge.TargetID)
+			if removedEdgeSet[edgeKey] {
+				continue
+			}
+
+			if removedNodeSet[edge.TargetID] {
+				continue
+			}
+
+			if !visited[edge.TargetID] {
+				visited[edge.TargetID] = true
+				parent[edge.TargetID] = current
+				queue = append(queue, edge.TargetID)
+			}
+		}
+	}
+
+	if !found {
+		return nil, domain.ErrPathNotFound
+	}
+
+	var path []domain.PathHop
+	current := targetID
+	for current != spurNodeID {
+		node := a.graph.GetNode(current)
+		if node != nil {
+			path = append([]domain.PathHop{{
+				NodeID:    current,
+				NodeName:  node.Name,
+				Namespace: node.Namespace,
+			}}, path...)
+		} else {
+			path = append([]domain.PathHop{{NodeID: current}}, path...)
+		}
+		current = parent[current]
+	}
+
+	spurNode := a.graph.GetNode(spurNodeID)
+	if spurNode != nil {
+		path = append([]domain.PathHop{{
+			NodeID:    spurNodeID,
+			NodeName:  spurNode.Name,
+			Namespace: spurNode.Namespace,
+		}}, path...)
+	} else {
+		path = append([]domain.PathHop{{NodeID: spurNodeID}}, path...)
+	}
+
+	return path, nil
 }

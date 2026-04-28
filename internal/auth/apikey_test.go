@@ -157,7 +157,7 @@ func TestAPIKeyService_ValidateAPIKey(t *testing.T) {
 					UserID:    userID,
 					Name:      "test-key",
 					Key:       validKey,
-					KeyHash:   hashAPIKey(validKey),
+					KeyHash:   HashKey(validKey),
 					Prefix:    "obs_a1b2",
 					IsActive:  true,
 					CreatedAt: time.Now(),
@@ -555,19 +555,6 @@ func TestAPIKeyService_GetActiveAPIKeys(t *testing.T) {
 	}
 }
 
-func TestHashAPIKey(t *testing.T) {
-	key := "obs_testkey123"
-	hash1 := hashAPIKey(key)
-	hash2 := hashAPIKey(key)
-
-	assert.NotEmpty(t, hash1)
-	assert.Equal(t, hash1, hash2, "same key should produce same hash")
-
-	differentKey := "obs_differentkey"
-	hash3 := hashAPIKey(differentKey)
-	assert.NotEqual(t, hash1, hash3, "different keys should produce different hashes")
-}
-
 func TestGenerateSecureKey(t *testing.T) {
 	key1, err := generateSecureKey(32)
 	require.NoError(t, err)
@@ -623,7 +610,7 @@ func TestAPIKeyValidatorAdapter_Validate(t *testing.T) {
 		UserID:    userID,
 		Name:      "test-key",
 		Key:       validKey,
-		KeyHash:   hashAPIKey(validKey),
+		KeyHash:   HashKey(validKey),
 		Prefix:    "obs_a1b2",
 		IsActive:  true,
 		CreatedAt: time.Now(),
@@ -659,7 +646,7 @@ func TestAPIKeyValidatorAdapter_Validate_AdminPermissions(t *testing.T) {
 		UserID:    userID,
 		Name:      "admin-key",
 		Key:       validKey,
-		KeyHash:   hashAPIKey(validKey),
+		KeyHash:   HashKey(validKey),
 		Prefix:    "obs_a1b2",
 		IsActive:  true,
 		CreatedAt: time.Now(),

@@ -1292,13 +1292,14 @@ jobs:
   integration-test:
     runs-on: ubuntu-latest
     services:
-      mysql:
-        image: mysql:8.0
+      postgres:
+        image: postgres:17
         env:
-          MYSQL_ROOT_PASSWORD: test
-          MYSQL_DATABASE: test_db
+          POSTGRES_USER: obs
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_db
         ports:
-          - 3306:3306
+          - 5432:5432
     steps:
       - uses: actions/checkout@v4
       
@@ -1310,7 +1311,7 @@ jobs:
       - name: Run integration tests
         run: go test -tags=integration -race ./...
         env:
-          DATABASE_URL: root:test@tcp(localhost:3306)/test_db
+          DATABASE_URL: postgres://obs:test@localhost:5432/test_db?sslmode=disable
 
   stress-test:
     runs-on: ubuntu-latest

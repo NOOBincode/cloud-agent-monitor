@@ -525,7 +525,7 @@ func (m *mockQueue) Close() error { return nil }
 func (m *mockQueue) GetInspector() *asynq.Inspector { return nil }
 
 func newTestTopologyService(repo domain.TopologyRepository, cache domain.TopologyCache, discoverers []domain.DiscoveryBackend, cfg *Config) *TopologyService {
-	return NewTopologyService(repo, cache, discoverers, nil, nil, cfg)
+	return NewTopologyService(repo, cache, discoverers, nil, nil, cfg, nil)
 }
 
 func TestNewTopologyService(t *testing.T) {

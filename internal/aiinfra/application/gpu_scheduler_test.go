@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	alertDomain "cloud-agent-monitor/internal/alerting/domain"
 	"cloud-agent-monitor/internal/aiinfra/domain"
 
 	"github.com/stretchr/testify/assert"
@@ -407,7 +408,7 @@ func TestGPUAlert_Lifecycle(t *testing.T) {
 			ID:          "alert-1",
 			GPUNodeID:   "gpu-node-0",
 			AlertType:   domain.AlertTypeTemperature,
-			Severity:    domain.AlertSeverityCritical,
+			Severity:    alertDomain.SeverityCritical,
 			AlertName:   "GPUOverTemperature",
 			Message:     "GPU temperature exceeded 90C threshold",
 			MetricValue: 92.0,
@@ -435,9 +436,9 @@ func TestGPUAlert_Lifecycle(t *testing.T) {
 	t.Run("list active alerts by node", func(t *testing.T) {
 		nodeID := "gpu-node-alert-test"
 		alerts := []*domain.GPUAlert{
-			{ID: "active-1", GPUNodeID: nodeID, AlertType: domain.AlertTypeXIDError, Severity: domain.AlertSeverityWarning, Status: "firing"},
-			{ID: "active-2", GPUNodeID: nodeID, AlertType: domain.AlertTypeMemory, Severity: domain.AlertSeverityCritical, Status: "firing"},
-			{ID: "resolved-1", GPUNodeID: nodeID, AlertType: domain.AlertTypePower, Severity: domain.AlertSeverityInfo, Status: "resolved"},
+			{ID: "active-1", GPUNodeID: nodeID, AlertType: domain.AlertTypeXIDError, Severity: alertDomain.SeverityWarning, Status: "firing"},
+			{ID: "active-2", GPUNodeID: nodeID, AlertType: domain.AlertTypeMemory, Severity: alertDomain.SeverityCritical, Status: "firing"},
+			{ID: "resolved-1", GPUNodeID: nodeID, AlertType: domain.AlertTypePower, Severity: alertDomain.SeverityInfo, Status: "resolved"},
 		}
 		for _, a := range alerts {
 			_ = repo.Create(ctx, a)
@@ -726,7 +727,7 @@ func TestGPUHealth_DegradationDetection(t *testing.T) {
 			ID:          "xid-alert-1",
 			GPUNodeID:   node.ID,
 			AlertType:   domain.AlertTypeXIDError,
-			Severity:    domain.AlertSeverityCritical,
+			Severity:    alertDomain.SeverityCritical,
 			AlertName:   "GPUXIDError",
 			Message:     "XID error 79 detected on GPU",
 			XIDCode:     79,
@@ -758,7 +759,7 @@ func TestGPUHealth_DegradationDetection(t *testing.T) {
 			ID:          "ecc-alert-1",
 			GPUNodeID:   node.ID,
 			AlertType:   domain.AlertTypeECC,
-			Severity:    domain.AlertSeverityWarning,
+			Severity:    alertDomain.SeverityWarning,
 			AlertName:   "GPUECCError",
 			Message:     "ECC memory error detected",
 			MetricValue: 5.0,

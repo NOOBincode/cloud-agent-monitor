@@ -153,14 +153,6 @@ const (
 	JobStatusCancelled JobStatus = "cancelled"
 )
 
-type AlertSeverity string
-
-const (
-	AlertSeverityCritical AlertSeverity = "critical"
-	AlertSeverityWarning  AlertSeverity = "warning"
-	AlertSeverityInfo     AlertSeverity = "info"
-)
-
 type AlertType string
 
 const (
